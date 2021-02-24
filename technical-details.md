@@ -17,7 +17,7 @@ bytes gives 000010100.
 [mod]: https://en.wikipedia.org/wiki/Modular_arithmetic
 
 Since 256 is 1 modulo 5, the Blake3 hash and the file size together is
-1 + 4 = 0 modulo 5&emdash;that is, the number of bits is a multiple
+1 + 4 = 0 modulo 5&mdash;that is, the number of bits is a multiple
 of 5. Frz encodes them five at a time with this base-32 alphabet
 (chosen so that letters easily mistaken for digits are omitted):
 
