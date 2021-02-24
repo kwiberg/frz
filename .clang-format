@@ -1,0 +1,14 @@
+BasedOnStyle: Chromium
+
+IndentWidth: 4
+AccessModifierOffset: -2
+
+BinPackArguments: true
+BinPackParameters: true
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:           '^<.*'
+    Priority:        1
+  - Regex:           '.*'
+    Priority:        2
