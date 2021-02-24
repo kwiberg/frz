@@ -93,20 +93,20 @@ macro(frz_add_executable name)
 endmacro()
 
 add_library(hash INTERFACE)
-target_sources(hash INTERFACE hash.hh)
+target_sources(hash INTERFACE src/hash.hh)
 target_link_libraries(hash INTERFACE absl::int128)
 
 add_library(hasher INTERFACE)
-target_sources(hasher INTERFACE hasher.hh)
+target_sources(hasher INTERFACE src/hasher.hh)
 target_link_libraries(hasher INTERFACE hash stream)
 
 add_library(exceptions INTERFACE)
-target_sources(exceptions INTERFACE exceptions.hh)
+target_sources(exceptions INTERFACE src/exceptions.hh)
 target_link_libraries(exceptions INTERFACE absl::str_format)
 
-add_library(filesystem_util STATIC filesystem_util.cc)
+add_library(filesystem_util STATIC src/filesystem_util.cc)
 
-frz_add_library(log STATIC log.cc)
+frz_add_library(log STATIC src/log.cc)
 target_link_libraries(log
   PUBLIC
   absl::str_format
@@ -114,7 +114,7 @@ target_link_libraries(log
   absl::time
   )
 
-frz_add_executable(log_test log_test.cc)
+frz_add_executable(log_test src/log_test.cc)
 target_link_libraries(log_test
   absl::time
   gmock
@@ -123,15 +123,15 @@ target_link_libraries(log_test
   log
   )
 
-frz_add_library(blake3_256_hasher STATIC blake3_256_hasher.cc)
+frz_add_library(blake3_256_hasher STATIC src/blake3_256_hasher.cc)
 target_link_libraries(blake3_256_hasher
   PUBLIC hasher
   PRIVATE blake3)
 
-frz_add_library(file_source STATIC file_source.cc)
+frz_add_library(file_source STATIC src/file_source.cc)
 target_link_libraries(file_source PUBLIC stream)
 
-frz_add_library(hash_index STATIC hash_index.cc)
+frz_add_library(hash_index STATIC src/hash_index.cc)
 target_link_libraries(hash_index
  PUBLIC
   hash
@@ -141,7 +141,7 @@ target_link_libraries(hash_index
   exceptions
   )
 
-frz_add_library(stream STATIC stream.cc)
+frz_add_library(stream STATIC src/stream.cc)
 target_link_libraries(stream
  PUBLIC
   absl::base
@@ -150,21 +150,21 @@ target_link_libraries(stream
   worker
   )
 
-frz_add_library(worker STATIC worker.cc)
+frz_add_library(worker STATIC src/worker.cc)
 target_link_libraries(worker
  PUBLIC
   absl::base
   absl::synchronization
   )
 
-frz_add_library(content_store STATIC content_store.cc)
+frz_add_library(content_store STATIC src/content_store.cc)
 target_link_libraries(content_store
  PRIVATE
   absl::random_random
   filesystem_util
   )
 
-frz_add_library(content_source STATIC content_source.cc)
+frz_add_library(content_source STATIC src/content_source.cc)
 target_link_libraries(content_source
  PUBLIC
   content_store
@@ -176,7 +176,7 @@ target_link_libraries(content_source
   file_source
   )
 
-frz_add_library(top_directory STATIC top_directory.cc)
+frz_add_library(top_directory STATIC src/top_directory.cc)
 target_link_libraries(top_directory
  PUBLIC
   stream
@@ -192,56 +192,58 @@ target_link_libraries(top_directory
   log
   )
 
-frz_add_library(openssl_blake2b512_hasher STATIC openssl_blake2b512_hasher.cc)
+frz_add_library(openssl_blake2b512_hasher STATIC
+  src/openssl_blake2b512_hasher.cc)
 target_link_libraries(openssl_blake2b512_hasher
   PUBLIC hasher
   PRIVATE OpenSSL::Crypto)
 
-frz_add_library(nettle_md5_hasher STATIC nettle_md5_hasher.cc)
+frz_add_library(nettle_md5_hasher STATIC src/nettle_md5_hasher.cc)
 target_link_libraries(nettle_md5_hasher
   PUBLIC hasher PRIVATE -lnettle)
 
-frz_add_library(nettle_sha256_hasher STATIC nettle_sha256_hasher.cc)
+frz_add_library(nettle_sha256_hasher STATIC src/nettle_sha256_hasher.cc)
 target_link_libraries(nettle_sha256_hasher
   PUBLIC hasher PRIVATE -lnettle)
 
-frz_add_library(nettle_sha512_hasher STATIC nettle_sha512_hasher.cc)
+frz_add_library(nettle_sha512_hasher STATIC src/nettle_sha512_hasher.cc)
 target_link_libraries(nettle_sha512_hasher
   PUBLIC hasher PRIVATE -lnettle)
 
-frz_add_library(nettle_sha512_256_hasher STATIC nettle_sha512_256_hasher.cc)
+frz_add_library(nettle_sha512_256_hasher STATIC src/nettle_sha512_256_hasher.cc)
 target_link_libraries(nettle_sha512_256_hasher
   PUBLIC hasher PRIVATE -lnettle)
 
-frz_add_library(nettle_sha3_256_hasher STATIC nettle_sha3_256_hasher.cc)
+frz_add_library(nettle_sha3_256_hasher STATIC src/nettle_sha3_256_hasher.cc)
 target_link_libraries(nettle_sha3_256_hasher
   PUBLIC hasher PRIVATE -lnettle)
 
-frz_add_library(nettle_sha3_512_hasher STATIC nettle_sha3_512_hasher.cc)
+frz_add_library(nettle_sha3_512_hasher STATIC src/nettle_sha3_512_hasher.cc)
 target_link_libraries(nettle_sha3_512_hasher
   PUBLIC hasher PRIVATE -lnettle)
 
-frz_add_library(openssl_md5_hasher STATIC openssl_md5_hasher.cc)
+frz_add_library(openssl_md5_hasher STATIC src/openssl_md5_hasher.cc)
 target_link_libraries(openssl_md5_hasher
   PUBLIC hasher
   PRIVATE OpenSSL::Crypto)
 
-frz_add_library(openssl_sha256_hasher STATIC openssl_sha256_hasher.cc)
+frz_add_library(openssl_sha256_hasher STATIC src/openssl_sha256_hasher.cc)
 target_link_libraries(openssl_sha256_hasher
   PUBLIC hasher
   PRIVATE OpenSSL::Crypto)
 
-frz_add_library(openssl_sha512_hasher STATIC openssl_sha512_hasher.cc)
+frz_add_library(openssl_sha512_hasher STATIC src/openssl_sha512_hasher.cc)
 target_link_libraries(openssl_sha512_hasher
   PUBLIC hasher
   PRIVATE OpenSSL::Crypto)
 
-frz_add_library(openssl_sha512_256_hasher STATIC openssl_sha512_256_hasher.cc)
+frz_add_library(openssl_sha512_256_hasher STATIC
+  src/openssl_sha512_256_hasher.cc)
 target_link_libraries(openssl_sha512_256_hasher
   PUBLIC hasher
   PRIVATE OpenSSL::Crypto)
 
-frz_add_executable(hash_test hash_test.cc)
+frz_add_executable(hash_test src/hash_test.cc)
 add_test(NAME hash COMMAND hash_test)
 target_link_libraries(hash_test
   absl::random_random
@@ -252,7 +254,7 @@ target_link_libraries(hash_test
   hash
   )
 
-frz_add_executable(content_store_test content_store_test.cc)
+frz_add_executable(content_store_test src/content_store_test.cc)
 add_test(NAME content_store COMMAND content_store_test)
 target_link_libraries(content_store_test
   content_store
@@ -262,7 +264,7 @@ target_link_libraries(content_store_test
   gtest_main
   )
 
-frz_add_executable(git_impl_test git_impl_test.cc)
+frz_add_executable(git_impl_test src/git_impl_test.cc)
 add_test(NAME git_impl COMMAND git_impl_test)
 target_link_libraries(git_impl_test
   filesystem_testing
@@ -273,7 +275,7 @@ target_link_libraries(git_impl_test
   gtest_main
   )
 
-frz_add_executable(git_test git_test.cc)
+frz_add_executable(git_test src/git_test.cc)
 add_test(NAME git COMMAND git_test)
 target_link_libraries(git_test
   filesystem_testing
@@ -284,7 +286,7 @@ target_link_libraries(git_test
   gtest_main
   )
 
-frz_add_executable(hasher_test hasher_test.cc)
+frz_add_executable(hasher_test src/hasher_test.cc)
 add_test(NAME hasher COMMAND hasher_test)
 target_link_libraries(hasher_test
   blake3_256_hasher
@@ -305,7 +307,7 @@ target_link_libraries(hasher_test
   openssl_sha512_hasher
   )
 
-frz_add_executable(hasher_bench hasher_bench.cc)
+frz_add_executable(hasher_bench src/hasher_bench.cc)
 target_link_libraries(hasher_bench
   benchmark
   blake3_256_hasher
@@ -322,7 +324,7 @@ target_link_libraries(hasher_bench
   openssl_sha512_hasher
   )
 
-frz_add_executable(frz-hash-files cmd_hash_files.cc)
+frz_add_executable(frz-hash-files src/cmd_hash_files.cc)
 target_link_libraries(frz-hash-files
   CLI11
   absl::str_format
@@ -335,7 +337,7 @@ target_link_libraries(frz-hash-files
   stream
   )
 
-frz_add_executable(frz-create-index cmd_create_index.cc)
+frz_add_executable(frz-create-index src/cmd_create_index.cc)
 target_link_libraries(frz-create-index
   CLI11
   absl::str_format
@@ -345,7 +347,7 @@ target_link_libraries(frz-create-index
   stream
   )
 
-frz_add_library(command STATIC command.cc)
+frz_add_library(command STATIC src/command.cc)
 target_link_libraries(command
  PRIVATE
   CLI11
@@ -358,7 +360,7 @@ target_link_libraries(command
   top_directory
   )
 
-frz_add_library(filesystem_testing STATIC filesystem_testing.cc)
+frz_add_library(filesystem_testing STATIC src/filesystem_testing.cc)
 target_link_libraries(filesystem_testing
  PUBLIC
   gmock
@@ -367,7 +369,7 @@ target_link_libraries(filesystem_testing
   absl::random_random
   )
 
-add_library(git_impl STATIC git_impl.cc)
+add_library(git_impl STATIC src/git_impl.cc)
 target_link_libraries(git_impl
  PUBLIC
   -lgit2
@@ -376,7 +378,7 @@ target_link_libraries(git_impl
   filesystem_util
   )
 
-frz_add_library(git STATIC git.cc)
+frz_add_library(git STATIC src/git.cc)
 target_link_libraries(git
  PRIVATE
   -lgit2
@@ -384,7 +386,7 @@ target_link_libraries(git
   git_impl
   )
 
-frz_add_library(git_testing STATIC git_testing.cc)
+frz_add_library(git_testing STATIC src/git_testing.cc)
 target_link_libraries(git_testing
  PUBLIC
   gmock
@@ -395,7 +397,7 @@ target_link_libraries(git_testing
   git_impl
   )
 
-frz_add_executable(command_test command_test.cc)
+frz_add_executable(command_test src/command_test.cc)
 add_test(NAME command COMMAND command_test)
 target_link_libraries(command_test
  PRIVATE
@@ -406,7 +408,7 @@ target_link_libraries(command_test
   gtest_main
   )
 
-frz_add_executable(command_add_test command_add_test.cc)
+frz_add_executable(command_add_test src/command_add_test.cc)
 add_test(NAME command_add COMMAND command_add_test)
 target_link_libraries(command_add_test
  PRIVATE
@@ -420,7 +422,7 @@ target_link_libraries(command_add_test
   hash
   )
 
-frz_add_executable(command_fill_test command_fill_test.cc)
+frz_add_executable(command_fill_test src/command_fill_test.cc)
 add_test(NAME command_fill COMMAND command_fill_test)
 target_link_libraries(command_fill_test
  PRIVATE
@@ -432,7 +434,7 @@ target_link_libraries(command_fill_test
   hash
   )
 
-frz_add_executable(command_repair_test command_repair_test.cc)
+frz_add_executable(command_repair_test src/command_repair_test.cc)
 add_test(NAME command_repair COMMAND command_repair_test)
 target_link_libraries(command_repair_test
  PRIVATE
@@ -445,5 +447,5 @@ target_link_libraries(command_repair_test
   hash
   )
 
-frz_add_executable(frz main.cc)
+frz_add_executable(frz src/main.cc)
 target_link_libraries(frz command)
