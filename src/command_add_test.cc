@@ -34,6 +34,7 @@ using ::testing::_;
 using ::testing::AllOf;
 using ::testing::Each;
 using ::testing::ElementsAre;
+using ::testing::Eq;
 using ::testing::Not;
 using ::testing::SizeIs;
 using ::testing::StartsWith;
@@ -139,6 +140,32 @@ TEST_P(TestCommandAdd1, DirectoryTree) {
     EXPECT_THAT(d.Path() / "sub/sume",
                 AllOf(IsSymlinkWhoseTarget(StartsWith(".frz/blake3/")),
                       ReadContents(StrEq("fff")),
+                      UseGit() ? GitStatus(ElementsAre("index_new"))
+                               : Not(GitStatus(_))));
+}
+
+TEST_P(TestCommandAdd1, AddSymlinks) {
+    TempDir d;
+    d.Dir(".frz");
+    if (UseGit()) {
+        CreateGitRepository(d.Path());
+    }
+    d.Symlink("one", "1");
+    d.Symlink("sub/two", "2");
+
+    if (AddWithDot()) {
+        EXPECT_EQ(0, Command(d.Path(), {"add", "."}));
+    } else {
+        EXPECT_EQ(0, Command(d.Path(), {"add", "one", "sub"}));
+    }
+
+    EXPECT_THAT(d.Path() / "one",
+                AllOf(IsSymlinkWhoseTarget(Eq("1")),
+                      UseGit() ? GitStatus(ElementsAre("index_new"))
+                               : Not(GitStatus(_))));
+    EXPECT_THAT(d.Path() / "sub/.frz", IsSymlinkWhoseTarget(StrEq("../.frz")));
+    EXPECT_THAT(d.Path() / "sub/two",
+                AllOf(IsSymlinkWhoseTarget(Eq("2")),
                       UseGit() ? GitStatus(ElementsAre("index_new"))
                                : Not(GitStatus(_))));
 }

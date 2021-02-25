@@ -112,19 +112,21 @@ int Add(CommonArgs& common_args, const AddArgs& add_args) {
     auto add_file = [&](const std::filesystem::directory_entry& dent) {
         if (std::filesystem::is_directory(dent.symlink_status())) {
             return;
-        } else if (!std::filesystem::is_regular_file(dent.symlink_status())) {
+        } else if (!std::filesystem::is_regular_file(dent.symlink_status()) &&
+                   !dent.is_symlink()) {
             ++nonfiles;
             return;
         }
-        const bool inserted = common_args.top->AddFile(dent.path());
-        if (inserted) {
+        const Top::AddResult r = common_args.top->AddFile(dent.path());
+        if (r == Top::AddResult::kNewFile) {
             ++successful;
-        } else {
+            absl::PrintF("+ %s\n", pretty_path(dent.path()));
+        } else if (r == Top::AddResult::kDuplicateFile) {
             ++duplicates;
+            absl::PrintF("= %s\n", pretty_path(dent.path()));
         }
         git->Add(dent.path());  // don't use plain `dent` here, since AddFile()
                                 // will have replaced the file with a symlink
-        absl::PrintF("%s %s\n", inserted ? "+" : "=", pretty_path(dent.path()));
     };
     for (const auto& file : add_args.files) {
         try {

@@ -60,10 +60,14 @@ class TopDirectory final {
           create_hasher_(std::move(create_hasher)),
           hash_name_(std::move(hash_name)) {}
 
-    bool AddFile(const std::filesystem::path& file, int subdir_levels) {
+    Top::AddResult AddFile(const std::filesystem::path& file,
+                           int subdir_levels) {
+        CreateHashdirSymlink(file.parent_path(), subdir_levels);
+        if (std::filesystem::is_symlink(file)) {
+            return Top::AddResult::kSymlink;
+        }
         FRZ_ASSERT(std::filesystem::is_regular_file(
             std::filesystem::symlink_status(file)));
-        CreateHashdirSymlink(file.parent_path(), subdir_levels);
         auto source = CreateFileSource(file);
         SizeHasher hasher(create_hasher_());
         streamer_.Stream(*source, hasher);
@@ -78,7 +82,8 @@ class TopDirectory final {
         if (!inserted) {
             unused_content_store_->MoveInsert(content_path);
         }
-        return inserted;
+        return inserted ? Top::AddResult::kNewFile
+                        : Top::AddResult::kDuplicateFile;
     }
 
     Top::FillResult Fill(Log& log,
@@ -429,7 +434,7 @@ class TopDirectoryCache final : public Top {
           create_hasher_(std::move(create_hasher)),
           hash_name_(std::move(hash_name)) {}
 
-    bool AddFile(const std::filesystem::path& file) override {
+    AddResult AddFile(const std::filesystem::path& file) override {
         const TopDirRef& t = GetTopDir(file);
         return t.topdir->AddFile(file, t.level);
     }
@@ -455,7 +460,7 @@ class TopDirectoryCache final : public Top {
     };
 
     const TopDirRef& GetTopDir(const std::filesystem::path& path) try {
-        std::filesystem::path p = std::filesystem::canonical(path);
+        std::filesystem::path p = std::filesystem::weakly_canonical(path);
         return GetTopDir(
             /*canonical_dir=*/std::filesystem::is_directory(p)
                 ? p

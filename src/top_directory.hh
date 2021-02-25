@@ -46,7 +46,12 @@ class Top {
     // with a symlink). Return true if the file contents were used, false if
     // they were ignored because the content directory already had an identical
     // file.
-    virtual bool AddFile(const std::filesystem::path& file) = 0;
+    enum class AddResult {
+        kNewFile,
+        kDuplicateFile,
+        kSymlink,
+    };
+    virtual AddResult AddFile(const std::filesystem::path& file) = 0;
 
     // Identify and attempt to fill missing content in the frz repository that
     // owns `path`. `content_sources` lists directories that we may copy or
