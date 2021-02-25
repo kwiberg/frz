@@ -71,8 +71,14 @@ You need
   * [GCC](https://gcc.gnu.org/) 10.2 or later
   * [libgit2](https://libgit2.org/)
 
-On Debian and Ubuntu, `sudo apt install cmake gcc libgit2-dev` should
-install these.
+On Debian and Ubuntu, `sudo apt install cmake gcc libgit2-dev`.
+
+On macOS with [MacPorts](https://www.macports.org/), `sudo port
+install cmake ninja gcc10 libgit2`. When invoking `cmake` (see below),
+use the extra options `-G Ninja -D
+CMAKE_C_COMPILER=/opt/local/bin/gcc-mp-10 -D
+CMAKE_CXX_COMPILER=/opt/local/bin/g++-mp-10` (replacing `/opt/local/`
+with whatever install directory you chose for MacPorts).
 
 Download the sources; then, in that directory,
 
