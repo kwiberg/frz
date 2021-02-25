@@ -28,6 +28,12 @@ namespace frz {
 std::optional<std::filesystem::path> RelativeSubtreePath(
     const std::filesystem::path path, const std::filesystem::path subtree_root);
 
+// Convert `path` to a canonical absolute path, i.e. an absolute path that has
+// no dot, dot-dot elements or symbolic links in its generic format
+// representation, _except_ that if the leaf (the rightmost path element) is a
+// symlink, leave it as it is and do not dereference it.
+std::filesystem::path NonLeafCanonical(const std::filesystem::path& path);
+
 // Does this file lack all write prmissions?
 bool IsReadonly(const std::filesystem::file_status& status);
 

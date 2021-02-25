@@ -460,7 +460,7 @@ class TopDirectoryCache final : public Top {
     };
 
     const TopDirRef& GetTopDir(const std::filesystem::path& path) try {
-        std::filesystem::path p = std::filesystem::weakly_canonical(path);
+        std::filesystem::path p = NonLeafCanonical(path);
         return GetTopDir(
             /*canonical_dir=*/std::filesystem::is_directory(p)
                 ? p

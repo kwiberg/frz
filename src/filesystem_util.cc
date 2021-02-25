@@ -47,6 +47,11 @@ std::optional<std::filesystem::path> RelativeSubtreePath(
     }
 }
 
+std::filesystem::path NonLeafCanonical(const std::filesystem::path& path) {
+    const std::filesystem::path p = path.lexically_normal();
+    return std::filesystem::canonical(p.parent_path()) / p.filename();
+}
+
 bool IsReadonly(const std::filesystem::file_status& status) {
     return (status.permissions() & kAllWritePermissions) ==
            std::filesystem::perms::none;
