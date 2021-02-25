@@ -25,9 +25,9 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
-#include <type_traits>
 
 #include "assert.hh"
 
