@@ -24,6 +24,13 @@ elseif (USE_SANITIZER STREQUAL "Memory")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=memory")
 endif()
 
+# Pure C implementation of the Git core methods provided as a linkable library.
+find_path(LIBGIT2_INCLUDE_DIR git2.h)
+find_library(LIBGIT2_LIBRARY NAMES git2)
+add_library(libgit2 SHARED IMPORTED)
+target_include_directories(libgit2 SYSTEM INTERFACE ${LIBGIT2_INCLUDE_DIR})
+set_property(TARGET libgit2 PROPERTY IMPORTED_LOCATION ${LIBGIT2_LIBRARY})
+
 # Google's unit testing framework.
 FetchContent_Declare(
   googletest
@@ -372,7 +379,7 @@ target_link_libraries(filesystem_testing
 add_library(git_impl STATIC src/git_impl.cc)
 target_link_libraries(git_impl
  PUBLIC
-  -lgit2
+  libgit2
   exceptions
  PRIVATE
   filesystem_util
@@ -381,7 +388,7 @@ target_link_libraries(git_impl
 frz_add_library(git STATIC src/git.cc)
 target_link_libraries(git
  PRIVATE
-  -lgit2
+  libgit2
   absl::flat_hash_map
   git_impl
   )
@@ -392,7 +399,7 @@ target_link_libraries(git_testing
   gmock
   gtest
  PRIVATE
-  -lgit2
+  libgit2
   absl::strings
   git_impl
   )
