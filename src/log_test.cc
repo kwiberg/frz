@@ -29,7 +29,7 @@ TEST(LogTest, Simple) {
     log.Info("Info message %d", 1);
     log.Important("Important message %d", 2);
     log.Error("Error message %d", 3);
-    log.Progress("This will be very quick");
+    static_cast<void>(log.Progress("This will be very quick"));
 }
 
 TEST(LogTest, Progress) {

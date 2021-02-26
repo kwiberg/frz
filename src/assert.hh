@@ -79,8 +79,8 @@ inline constexpr bool kAssertActive = false;
 inline constexpr bool kAssertActive = true;
 #endif
 
-// TODO: Use std::source_location instead when stable versions of GCC and/or
-// clang support it.
+// TODO(github.com/kwiberg/frz/issues/5): Use std::source_location instead when
+// stable versions of GCC and/or clang support it.
 struct SourceLocation {
     const char* file;
     int line;

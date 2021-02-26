@@ -22,8 +22,8 @@
 
 namespace frz {
 
-// Instances of this class represent zero or more git repositories, which are
-// automatically discovered by looking in the current directory, the parent
+// Instances of this class represent zero or more Git repositories, which are
+// automatically discovered by looking in the argument directory, the parent
 // directory, the grandparent directory, etc.
 class Git {
   public:

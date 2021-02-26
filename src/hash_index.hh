@@ -26,6 +26,7 @@
 
 namespace frz {
 
+// Map from HashAndSize<HashBits> to std::filesystem::path.
 template <int HashBits>
 class HashIndex {
   public:
@@ -48,8 +49,13 @@ class HashIndex {
                            is_good) = 0;
 };
 
+// Create an in-memory map.
 std::unique_ptr<HashIndex<256>> CreateRamHashIndex();
 
+// Create a disk-based map. The base-32 representation of the keys are
+// converted to symlink names (the first two digits to a subdirectory name, the
+// next two digits to a second-level subdirectory name, and the remaining
+// digits to the symlink filename), and the value becomes the symlink target.
 std::unique_ptr<HashIndex<256>> CreateDiskHashIndex(
     const std::filesystem::path& index_dir);
 

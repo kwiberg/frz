@@ -53,9 +53,9 @@ class TopDirectory final {
                  std::string hash_name)
         : path_(path),
           hash_index_(CreateDiskHashIndex(path / ".frz" / hash_name)),
-          content_store_(CreateDiskContentStore(path / ".frz" / "content")),
+          content_store_(ContentStore::Create(path / ".frz" / "content")),
           unused_content_store_(
-              CreateDiskContentStore(path / ".frz" / "unused-content")),
+              ContentStore::Create(path / ".frz" / "unused-content")),
           streamer_(streamer),
           create_hasher_(std::move(create_hasher)),
           hash_name_(std::move(hash_name)) {}
@@ -345,7 +345,7 @@ class TopDirectory final {
         }
         std::vector<std::unique_ptr<ContentSource<256>>> sources;
         for (const auto& s : content_sources) {
-            sources.push_back(CreateDirectoryContentSource(
+            sources.push_back(ContentSource<256>::Create(
                 s.path, s.read_only, streamer_, create_hasher_));
         }
         FetchMissingContentDir(result, log, symlink_counter, sources,

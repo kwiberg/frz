@@ -17,6 +17,17 @@
 #ifndef FRZ_STREAM_HH_
 #define FRZ_STREAM_HH_
 
+/*
+
+  This file defines interfaces and files for dealing with streams: sequences of
+  bytes that go from one place (the "source") to another (the "sink").
+
+  The general design is that both sources and sinks are passive (i.e., you make
+  synchronous calls to them in order to get bytes in or out), and that an
+  active actor in the middle drives them both.
+
+*/
+
 #include <absl/base/thread_annotations.h>
 #include <cstddef>
 #include <functional>
@@ -26,6 +37,8 @@
 
 namespace frz {
 
+// Interface for stream sources, i.e. objects that produce a stream of bytes. A
+// source will producve a finite number of bytes, and then end.
 class StreamSource {
   public:
     struct BytesCopied {
@@ -51,6 +64,8 @@ struct FillBufferFromStreamResult {
 FillBufferFromStreamResult FillBufferFromStream(StreamSource& source,
                                                 std::span<std::byte> buffer);
 
+// Interface for stream sinks, i.e. objects that consume a stream of bytes. A
+// sink must accept any number of bytes.
 class StreamSink {
   public:
     virtual ~StreamSink() = default;
@@ -59,6 +74,8 @@ class StreamSink {
     virtual void AddBytes(std::span<const std::byte> buffer) = 0;
 };
 
+// Interface for an object that can read bytes from a source and feed them to a
+// sink. The Streamer can be reused for several source+sink pairs.
 class Streamer {
   public:
     virtual ~Streamer() = default;

@@ -28,6 +28,9 @@
 
 namespace frz {
 
+// Instances of this class represent zero or more Frz repositories, which are
+// automatically discovered by looking in the argument directory, the parent
+// directory, the grandparent directory, etc.
 class Top {
   public:
     struct ContentSource {

@@ -133,7 +133,8 @@ HashAndSize<HashBits> RandomHaS(absl::BitGen& bitgen) {
 constexpr int kNumRandomIterations = 10000;
 
 TEST(TestHashAndSize, Base32Roundtrip) {
-    // TODO: Replace this test with a real fuzzer.
+    // TODO(github.com/kwiberg/frz/issues/6): Replace this test with a real
+    // fuzzer.
     absl::BitGen bitgen;
     for (int i = 0; i < kNumRandomIterations; ++i) {
         const HashAndSize<256> hs = RandomHaS<256>(bitgen);
@@ -155,7 +156,8 @@ std::string RandomString(absl::BitGen& bitgen, std::string_view alphabet = "") {
 }
 
 TEST(TestHashAndSize, Base32Junk) {
-    // TODO: Replace this test with a real fuzzer.
+    // TODO(github.com/kwiberg/frz/issues/6): Replace this test with a real
+    // fuzzer.
     absl::BitGen bitgen;
     for (int i = 0; i < kNumRandomIterations; ++i) {
         const std::string s = RandomString(bitgen);
@@ -165,7 +167,8 @@ TEST(TestHashAndSize, Base32Junk) {
 }
 
 TEST(TestHashAndSize, Base32JunkOrReverseRoundtrip) {
-    // TODO: Replace this test with a real fuzzer.
+    // TODO(github.com/kwiberg/frz/issues/6): Replace this test with a real
+    // fuzzer.
     constexpr std::string_view all_base32_digits =
         "0123456789abcdefghjkmnpqrstuwxyzABCDEFGHJKMNPQRSTUWXYZ";
     absl::BitGen bitgen;

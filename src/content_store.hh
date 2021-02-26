@@ -25,6 +25,11 @@ namespace frz {
 
 class ContentStore {
   public:
+    // Use the given directory as a content store. The directory need not
+    // exist; it will be created if necessary.
+    static std::unique_ptr<ContentStore> Create(
+        const std::filesystem::path& content_dir);
+
     virtual ~ContentStore() = default;
 
     // Copy the given file into the content store. Return the new path.
@@ -53,9 +58,6 @@ class ContentStore {
     virtual std::optional<std::filesystem::path> CanonicalPath(
         const std::filesystem::path& file) const = 0;
 };
-
-std::unique_ptr<ContentStore> CreateDiskContentStore(
-    const std::filesystem::path& content_dir);
 
 }  // namespace frz
 

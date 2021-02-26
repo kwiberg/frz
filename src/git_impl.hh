@@ -17,6 +17,14 @@
 #ifndef FRZ_GIT_IMPL_HH_
 #define FRZ_GIT_IMPL_HH_
 
+/*
+
+  This file contains low-level utilities for interacting with libgit2. Should
+  be used only by the higher-level Git interfaces, and not directly by other
+  source code.
+
+*/
+
 #include <filesystem>
 #include <git2.h>
 
@@ -34,7 +42,7 @@ class LibGit2Handle final {
     ~LibGit2Handle() { git_libgit2_shutdown(); }
 };
 
-// RAII wrapper for `git_buf`.
+// RAII wrapper for libgit2's `git_buf`.
 class GitBuf final {
   public:
     GitBuf() = default;

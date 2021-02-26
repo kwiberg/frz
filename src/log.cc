@@ -35,6 +35,8 @@ namespace frz {
 
 namespace {
 
+// Use terminal escape codes to move the cursor left. Negative values are
+// ignored.
 void MoveCursorLeft(int steps) {
     if (steps > 0) {
         absl::PrintF("\033[%dD", steps);

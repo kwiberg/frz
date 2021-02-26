@@ -141,11 +141,14 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
 
 }  // namespace
 
-std::unique_ptr<ContentSource<256>> CreateDirectoryContentSource(
+template <int HashBits>
+std::unique_ptr<ContentSource<HashBits>> ContentSource<HashBits>::Create(
     const std::filesystem::path& dir, bool read_only, Streamer& streamer,
-    std::function<std::unique_ptr<Hasher<256>>()> create_hasher) {
-    return std::make_unique<DirectoryContentSource<256>>(
+    std::function<std::unique_ptr<Hasher<HashBits>>()> create_hasher) {
+    return std::make_unique<DirectoryContentSource<HashBits>>(
         dir, read_only, streamer, std::move(create_hasher));
 }
+
+template class ContentSource<256>;
 
 }  // namespace frz

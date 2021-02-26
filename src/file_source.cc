@@ -49,7 +49,8 @@ class FileStreamSource final : public StreamSource {
                 int, std::fread(buffer.data() + bytes_read, 1,
                                 buffer.size() - bytes_read, file_));
             if (std::ferror(file_)) {
-                FRZ_CHECK(false);  // TODO: Handle errors.
+                // TODO(github.com/kwiberg/frz/issues/7): Handle errors.
+                FRZ_CHECK(false);
             }
             if (std::feof(file_)) {
                 std::fclose(file_);
@@ -69,7 +70,8 @@ class FileStreamSource final : public StreamSource {
 std::unique_ptr<StreamSource> CreateFileSource(std::filesystem::path path) {
     std::FILE* const file = std::fopen(path.c_str(), "rb");
     if (file == nullptr) {
-        FRZ_CHECK(false);  // TODO: Handle errors.
+        // TODO(github.com/kwiberg/frz/issues/7): Handle errors.
+        FRZ_CHECK(false);
     } else {
         return std::make_unique<FileStreamSource>(file);
     }

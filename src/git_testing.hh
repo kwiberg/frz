@@ -25,8 +25,10 @@
 
 namespace frz {
 
+// Googletest matcher that tests if the value is a file whose Git status
+// satisfies `status_matcher`.
 testing::Matcher<std::filesystem::path> GitStatus(
-    testing::Matcher<std::vector<std::string_view>>);
+    testing::Matcher<std::vector<std::string_view>> status_matcher);
 
 // Create a new git repository in the specified directory.
 void CreateGitRepository(const std::filesystem::path& dir);

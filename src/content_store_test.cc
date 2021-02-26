@@ -30,7 +30,7 @@ using ::testing::Optional;
 TEST(TestContentStore, CanonicalPath) {
     TempDir d;
     d.Dir("cs");
-    std::unique_ptr<ContentStore> cs = CreateDiskContentStore(d.Path() / "cs");
+    std::unique_ptr<ContentStore> cs = ContentStore::Create(d.Path() / "cs");
     EXPECT_THAT(cs->CanonicalPath("/foo/bar"), Eq(std::nullopt));
     EXPECT_THAT(cs->CanonicalPath(d.Path() / "foo"), Eq(std::nullopt));
     EXPECT_THAT(cs->CanonicalPath(d.Path() / "cs"), Optional(Eq(".")));

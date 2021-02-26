@@ -33,6 +33,11 @@ namespace frz {
 template <int HashBits>
 class ContentSource {
   public:
+    // Use the given directory as a content source.
+    static std::unique_ptr<ContentSource<HashBits>> Create(
+        const std::filesystem::path& dir, bool read_only, Streamer& streamer,
+        std::function<std::unique_ptr<Hasher<HashBits>>()> create_hasher);
+
     virtual ~ContentSource() = default;
 
     // Fetch a file with the given hash from the content source, and put in in
@@ -43,9 +48,9 @@ class ContentSource {
         ContentStore& content_store) = 0;
 };
 
-std::unique_ptr<ContentSource<256>> CreateDirectoryContentSource(
-    const std::filesystem::path& dir, bool read_only, Streamer& streamer,
-    std::function<std::unique_ptr<Hasher<256>>()> create_hasher);
+// Instantiated for `HashBits` == 256. Add more instantiations here if they are
+// needed.
+extern template class ContentSource<256>;
 
 }  // namespace frz
 

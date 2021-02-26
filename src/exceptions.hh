@@ -25,6 +25,8 @@
 
 namespace frz {
 
+// Application specific exception. We convert all other exceptions to this if
+// we intend to propagate them up the stack.
 class Error final {
   public:
     Error(std::string what) : what_(std::move(what)) {}

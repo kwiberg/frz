@@ -25,6 +25,8 @@
 namespace frz {
 namespace {
 
+// A very simple Streamer that will sequentially get bytes from the source,
+// feed them to the sink, and repeat until the stream ends.
 class SingleThreadedStreamer final : public Streamer {
   public:
     SingleThreadedStreamer(CreateSingleThreadedStreamerArgs args)
@@ -52,8 +54,12 @@ class SingleThreadedStreamer final : public Streamer {
     const std::size_t buffer_size_;
 };
 
+// Move-only object that owns a heap-allocated array of bytes (size fixed at
+// construction time), and keeps track of (1) the number of valid bytes and (2)
+// whether this buffer contains the last byte of the stream.
 class StreamBuffer {
   public:
+    // Create a vector of StreamBuffers with the given capacity per buffer.
     static std::vector<StreamBuffer> CreateVector(int num_buffers,
                                                   int bytes_per_buffer) {
         std::vector<StreamBuffer> v;
@@ -64,7 +70,7 @@ class StreamBuffer {
         return v;
     }
 
-    StreamBuffer(int size)
+    explicit StreamBuffer(int size)
         : data_(std::make_unique<std::byte[]>(size)), capacity_(size) {}
 
     StreamBuffer(StreamBuffer&&) = default;
@@ -72,14 +78,20 @@ class StreamBuffer {
     StreamBuffer(const StreamBuffer&) = delete;
     StreamBuffer& operator=(const StreamBuffer&) = delete;
 
+    // Return the span of valid bytes.
     std::span<const std::byte> Read() const {
         return std::span(data_.get(), status_.size);
     }
 
+    // Is the last byte in this buffer also the last byte of the whole stream?
     bool End() const { return status_.end; }
 
+    // Return a writable span for the whole buffer. Callers must call
+    // .FinishWrite() when they're done writing to it.
     std::span<std::byte> Write() { return std::span(data_.get(), capacity_); }
 
+    // Inform the buffer of how many bytes were written to it, and whether the
+    // last byte written is the last byte of the whole stream.
     struct WriteStatus {
         int size;
         bool end;
@@ -95,8 +107,8 @@ class StreamBuffer {
     WriteStatus status_ = {.size = 0, .end = false};
 };
 
-// TODO: Replace with `using Semaphore = std::counting_semaphore<100>` once we
-// have standard library support for it.
+// TODO(github.com/kwiberg/frz/issues/4): Replace with `using Semaphore =
+// std::counting_semaphore<100>` once we have standard library support for it.
 class Semaphore final {
   public:
     static constexpr std::ptrdiff_t max() noexcept { return 100; }
@@ -119,6 +131,8 @@ class Semaphore final {
     int count_ ABSL_GUARDED_BY(mutex_);
 };
 
+// A Streamer that runs the source in a woker thread and the sink in the
+// current thread; this allows them to execute in parallel.
 class MultiThreadedStreamer final : public Streamer {
   public:
     MultiThreadedStreamer(CreateMultiThreadedStreamerArgs args)
@@ -128,7 +142,13 @@ class MultiThreadedStreamer final : public Streamer {
     void Stream(StreamSource& source, StreamSink& sink,
                 std::function<void(int num_bytes)> progress) override {
         FRZ_ASSERT_LE(buffers_.size(), Semaphore::max());
+
+        // The number of free buffers in `buffers_`, just waiting for
+        // source_work() to write to them.
         Semaphore free_buffers(FRZ_ASSERT_CAST(int, buffers_.size()));
+
+        // The number of filled buffers in `buffers_`, just waiting for
+        // sink_work() to read from them.
         Semaphore full_buffers(0);
 
         auto source_work = [&] {

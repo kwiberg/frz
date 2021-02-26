@@ -161,7 +161,7 @@ class DiskContentStore final : public ContentStore {
 
 }  // namespace
 
-std::unique_ptr<ContentStore> CreateDiskContentStore(
+std::unique_ptr<ContentStore> ContentStore::Create(
     const std::filesystem::path& content_dir) {
     return std::make_unique<DiskContentStore>(content_dir);
 }

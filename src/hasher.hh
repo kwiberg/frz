@@ -27,6 +27,8 @@
 
 namespace frz {
 
+// A StreamSink that, once it has finished accepting bytes, can produce a hash
+// value.
 template <std::size_t NumBits>
 class Hasher : public StreamSink {
   public:

@@ -38,6 +38,8 @@ namespace frz_hash_impl {
 inline constexpr std::string_view kHexDigits = "0123456789abcdef";
 static_assert(kHexDigits.size() == 16);
 
+// Return the integer (in the range 0-15) corresponding to the given hex digit,
+// or nullopt if `c` isn't a hex digit.
 inline constexpr std::optional<int> HexToVal(char c) {
     if ('0' <= c && c <= '9') {
         return c - '0';
@@ -51,6 +53,9 @@ inline constexpr std::optional<int> HexToVal(char c) {
     return std::nullopt;
 }
 
+// Convert an array of hex digits into an array of bytes. Return true if the
+// conversion succeeded, false if it didn't (which can only happen if the input
+// array contained characters that weren't hex digits).
 template <std::size_t NumBits>
 constexpr bool ParseHex(std::span<const char, NumBits / 4> hex,
                         std::span<std::byte, NumBits / 8> bytes) {
@@ -68,6 +73,7 @@ constexpr bool ParseHex(std::span<const char, NumBits / 4> hex,
 
 }  // namespace frz_hash_impl
 
+// Value type that represents a hash value of the specified number of bits.
 template <std::size_t NumBits>
 class Hash final {
   public:
@@ -75,6 +81,9 @@ class Hash final {
     static_assert(NumBits % 8 == 0);
     static inline constexpr std::size_t kNumBytes = NumBits / 8;
 
+    // Construct a Hash from an array of hex digits. Returns nullopt if the
+    // number of digits was wrong (it needs to be exactly `NumBits` / 4) or if
+    // the array contained characters that weren't hex digits.
     static constexpr std::optional<Hash> FromHex(std::string_view hex) {
         if (4 * hex.size() != NumBits) {
             return std::nullopt;
@@ -88,6 +97,7 @@ class Hash final {
         }
     }
 
+    // Construct a Hash from an array of bytes.
     explicit constexpr Hash(std::span<const std::byte, kNumBytes> hash_bytes) {
         FRZ_ASSERT_EQ(hash_bytes.size(), hash_bytes_.size());
         std::copy(std::cbegin(hash_bytes), std::cend(hash_bytes),
@@ -99,15 +109,20 @@ class Hash final {
 
     constexpr bool operator==(const Hash&) const = default;
 
+    // Specification of how to hash Hash values so that they can be keys in
+    // Abseil's hash tables.
     template <typename H>
     friend H AbslHashValue(H h, const Hash& hash) {
         return H::combine(std::move(h), hash.hash_bytes_);
     }
 
+    // Read-only access to the array of bytes.
     constexpr std::span<const std::byte, kNumBytes> Bytes() const {
         return hash_bytes_;
     }
 
+    // Conversion to hex. Returns an array instead of a string because it saves
+    // a heap allocation.
     constexpr std::array<char, NumBits / 4> ToHex() const {
         std::array<char, NumBits / 4> hex;
         for (std::size_t i = 0; i < kNumBytes; ++i) {
@@ -129,26 +144,43 @@ class Hash final {
     std::array<std::byte, kNumBytes> hash_bytes_;
 };
 
+// Value type that represents a hash value (of size `HashBits`) and a file
+// size.
 template <std::size_t HashBits>
 class HashAndSize final {
   public:
+    // Convert a base-32 string to a HashAndSize. We read 5 bits from each
+    // digit, and use the first `HashBits` bits for the hash, and the remaining
+    // bits for the file size. In case of an error, return nullopt; this can
+    // happen if a character in the string isn't a valid base-32 digit, or if
+    // there aren't enough digits to fully populate the hash. An error will
+    // also occur if the file size is too large for the implementation, or if
+    // it is coded with more bits than necessary (i.e., if it has 5 or more
+    // leading zeros, since that means the base-32 string couls simply have had
+    // fewer digits).
     static constexpr std::optional<HashAndSize> FromBase32(
         std::string_view base32) {
-        std::uint64_t value = 0;
-        int bits_in_value = 0;
-        std::size_t input_index = 0;
-        bool error = false;
+        std::uint64_t value = 0;  // temp storage for bits read from `base32`
+        int bits_in_value = 0;    // number of bits stored in `value`
+        std::size_t input_index = 0;  // next digit to read from `base32`
+        bool error = false;           // has an error occured yet?
+
+        // Read more base-32 digits until we have 8 bits, and return them as a
+        // byte. If there's an error, set `error` to true and return an
+        // arbitrary value.
         auto get_byte = [&] {
             if (error) {
                 return std::byte(0);
             }
             while (bits_in_value < 8) {
                 if (input_index >= base32.size()) {
+                    // Reached the end of `base32` without getting enough bits.
                     error = true;
                     return std::byte(0);
                 }
                 std::optional<int> d = Base32ToVal(base32[input_index]);
                 if (!d.has_value()) {
+                    // It wasn't a base-32 digit.
                     error = true;
                     return std::byte(0);
                 }
@@ -161,20 +193,30 @@ class HashAndSize final {
             value &= ~(~std::uint64_t{0} << bits_in_value);
             return r;
         };
+
+        // Read `HashBits` / 8 bytes for the hash.
         std::array<std::byte, Hash<HashBits>::kNumBytes> hash_bytes;
         for (std::byte& b : hash_bytes) {
             b = get_byte();
         }
+
+        // Read the rest of the bits.
         for (; !error && input_index < base32.size();
              ++input_index, bits_in_value += 5) {
             std::optional<int> d = Base32ToVal(base32[input_index]);
-            if (d.has_value() && std::countl_zero(value) >= 6) {
-                value = (value << 5) | *d;
-            } else {
+            if (!d.has_value()) {
+                // It wasn't a base-32 digit.
                 error = true;
+            } else if (std::countl_zero(value) < 6) {
+                // Shifting in 5 more bits would cause overflow.
+                error = true;
+            } else {
+                // We successfully read 5 more bits of the value.
+                value = (value << 5) | *d;
             }
         }
-        int actual_bits_in_value = 64 - std::countl_zero(value);
+
+        const int actual_bits_in_value = 64 - std::countl_zero(value);
         FRZ_ASSERT_LE(actual_bits_in_value, 63);
         FRZ_ASSERT_LE(actual_bits_in_value, bits_in_value);
         if (bits_in_value - actual_bits_in_value >= 5) {
@@ -196,14 +238,21 @@ class HashAndSize final {
 
     constexpr bool operator==(const HashAndSize&) const = default;
 
+    // Specification of how to hash Hash values so that they can be keys in
+    // Abseil's hash tables.
     template <typename H>
     friend H AbslHashValue(H h, const HashAndSize& hs) {
         return H::combine(std::move(h), hs.hash_, hs.size_);
     }
 
+    // Get the Hash and the file size.
     const Hash<HashBits>& GetHash() const { return hash_; }
     std::int64_t GetSize() const { return size_; }
 
+    // Convert the value to base-32. The hash comes first, followed by the file
+    // size (represented with as few bits as possible, though we may have to
+    // add up to 4 leading zeros in order to ensure that we output an integer
+    // number of base-32 digits).
     std::string ToBase32() const {
         // How many output bits do we need? We store the hash using `HashBits`
         // bits. For the number of bytes, figure out how many bits we need by
