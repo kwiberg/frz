@@ -144,8 +144,8 @@ class GitRepo final : public GitRepository {
 std::optional<std::filesystem::path> GitRepository::Discover(
     const std::filesystem::path& path) {
     // `git_repository_discover` unfortunately follows symlinks before starting
-    // its search. We do no´tr want this, so if `path` is a symlink, we start
-    // the search in its parent directory instead.
+    // its search. We don't want this, so if `path` is a symlink, we start the
+    // search in its parent directory instead.
     const std::filesystem::path start_path =
         std::filesystem::is_symlink(path) ? path.parent_path() : path;
     LibGit2Handle libgit2_handle;
