@@ -18,6 +18,8 @@
 #define FRZ_EXCEPTIONS_HH_
 
 #include <absl/strings/str_format.h>
+#include <cerrno>
+#include <cstring>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -40,6 +42,12 @@ class Error final {
   private:
     std::string what_;
 };
+
+// Create an error from the current value of `errno`.
+inline Error ErrnoError() {
+    FRZ_ASSERT_NE(errno, 0);
+    return Error(std::strerror(errno));
+}
 
 }  // namespace frz
 

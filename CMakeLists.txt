@@ -136,7 +136,7 @@ target_link_libraries(blake3_256_hasher
   PRIVATE blake3)
 
 frz_add_library(file_source STATIC src/file_source.cc)
-target_link_libraries(file_source PUBLIC stream)
+target_link_libraries(file_source PUBLIC exceptions stream)
 
 frz_add_library(hash_index STATIC src/hash_index.cc)
 target_link_libraries(hash_index
@@ -180,6 +180,7 @@ target_link_libraries(content_source
   stream
  PRIVATE
   absl::flat_hash_map
+  exceptions
   file_source
   )
 

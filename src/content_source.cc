@@ -23,6 +23,7 @@
 #include <optional>
 
 #include "content_store.hh"
+#include "exceptions.hh"
 #include "file_source.hh"
 #include "hash.hh"
 #include "hasher.hh"
@@ -99,18 +100,23 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
         while (!size_it->second.empty()) {
             std::filesystem::path p = std::move(size_it->second.back());
             size_it->second.pop_back();
-            auto source = CreateFileSource(p);
-            SizeHasher hasher(create_hasher_());
-            streamer_.Stream(*source, hasher, [&](int num_bytes) {
-                byte_counter.Increment(num_bytes);
-            });
-            HashAndSize<256> p_hs = hasher.Finish();
-            auto [it, inserted] = files_by_hash_.insert({p_hs, std::move(p)});
-            if (p_hs == hs) {
-                if (size_it->second.empty()) {
-                    files_by_size_.erase(size_it);
+            try {
+                auto source = CreateFileSource(p);
+                SizeHasher hasher(create_hasher_());
+                streamer_.Stream(*source, hasher, [&](int num_bytes) {
+                    byte_counter.Increment(num_bytes);
+                });
+                HashAndSize<256> p_hs = hasher.Finish();
+                auto [it, inserted] =
+                    files_by_hash_.insert({p_hs, std::move(p)});
+                if (p_hs == hs) {
+                    if (size_it->second.empty()) {
+                        files_by_size_.erase(size_it);
+                    }
+                    return &it->second;
                 }
-                return &it->second;
+            } catch (const Error& e) {
+                log.Important("When reading %s: %s", p, e.what());
             }
             file_counter.Increment(1);
         }

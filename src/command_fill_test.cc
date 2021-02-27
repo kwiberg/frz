@@ -157,5 +157,32 @@ TEST(TestCommandFill, ContentSourcesAreOrdered) {
     EXPECT_THAT(d.Path() / "sub3/c", IsNotFound());
 }
 
+TEST(TestCommandFill, CopyFromUnreadable) {
+    // Create the small test repo, and delete its contents.
+    TempDir d = CreateSmallTestRepo();
+    d.Remove(".frz/blake3");
+    d.Remove(".frz/content");
+
+    // Make a directory whose file has the same contents...
+    d.File("sub/fileA", "123");
+    d.File("sub/fileB", "456");
+    d.File("sub/fileC", "789");
+
+    // ...but make one of the files unreadable.
+    std::filesystem::permissions(d.Path() / "sub/fileB",
+                                 std::filesystem::perms::owner_read |
+                                     std::filesystem::perms::group_read |
+                                     std::filesystem::perms::others_read,
+                                 std::filesystem::perm_options::remove);
+
+    // We expect `frz fill` to report that it failed...
+    EXPECT_EQ(1, Command(d.Path(), {"fill", "--copy-from", "sub"}));
+
+    // ...but it should have been able to fill in the contents of the two
+    // readable files.
+    EXPECT_THAT(d.Path() / "file1", ReadContents(StrEq("123")));
+    EXPECT_THAT(d.Path() / "file3", ReadContents(StrEq("789")));
+}
+
 }  // namespace
 }  // namespace frz
