@@ -209,5 +209,23 @@ TEST(TestCommandFill, WriteFailure) {
     EXPECT_EQ(1, Command(d.Path(), {"fill", "--copy-from", "sub"}));
 }
 
+TEST(TestCommandFill, ContentSourcesIgnoreSymlinks) {
+    TempDir d = CreateSmallTestRepo();
+
+    // Keep "file1", but remove the rest of its symlink chain.
+    for (auto paths = d.FollowSymlinks("file1");
+         const std::filesystem::path& p : paths | std::views::drop(1)) {
+        std::filesystem::remove(p);
+    }
+    d.File("sub1/foo", "123");  // Same content as the original file.
+    d.Symlink("sub2/foo", "../sub1/foo");
+
+    // Fails because we ignore symlinks in content source trees.
+    EXPECT_EQ(1, Command(d.Path(), {"fill", "--copy-from", "sub2"}));
+
+    // Succeeds, because sub1/foo is the real file.
+    EXPECT_EQ(0, Command(d.Path(), {"fill", "--copy-from", "sub1"}));
+}
+
 }  // namespace
 }  // namespace frz

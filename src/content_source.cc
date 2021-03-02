@@ -77,8 +77,8 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
         auto file_counter = progress.AddCounter("files");
         for (const std::filesystem::directory_entry& dent :
              std::filesystem::recursive_directory_iterator(dir_)) {
-            if (dent.is_regular_file()) {
-                // A regular file, or a symlink to one.
+            if (std::filesystem::is_regular_file(dent.symlink_status())) {
+                // A regular file (not a symlink to one).
                 files_by_size_[dent.file_size()].push_back(dent.path());
                 file_counter.Increment(1);
             }
