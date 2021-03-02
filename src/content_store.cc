@@ -24,6 +24,7 @@
 
 #include "assert.hh"
 #include "base32.hh"
+#include "exceptions.hh"
 #include "filesystem_util.hh"
 
 namespace frz {
@@ -35,7 +36,7 @@ class DiskContentStore final : public ContentStore {
         : content_dir_(content_dir) {}
 
     std::filesystem::path CopyInsert(
-        const std::filesystem::path& source) override {
+        const std::filesystem::path& source) override try {
         FRZ_ASSERT(std::filesystem::is_regular_file(source));
         int depth = 0;
         while (true) {
@@ -57,10 +58,12 @@ class DiskContentStore final : public ContentStore {
             RemoveWritePermissions(destination);
             return destination;
         }
+    } catch (const std::filesystem::filesystem_error& e) {
+        throw Error(e.what());
     }
 
     std::filesystem::path MoveInsert(
-        const std::filesystem::path& source) override {
+        const std::filesystem::path& source) override try {
         if (std::filesystem::is_symlink(source)) {
             // We don't want to move either the symlink or its taget, because
             // neither is likely to be what the user expects; copy instead.
@@ -95,6 +98,8 @@ class DiskContentStore final : public ContentStore {
             RemoveWritePermissions(destination);
             return destination;
         }
+    } catch (const std::filesystem::filesystem_error& e) {
+        throw Error(e.what());
     }
 
     void ForEach(

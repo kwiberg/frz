@@ -55,10 +55,16 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
         ContentStore& content_store) override {
         ListFiles(log);
         std::filesystem::path* const p = FindFile(log, hs);
-        return p == nullptr
-                   ? std::nullopt
-                   : std::optional(read_only_ ? content_store.CopyInsert(*p)
-                                              : content_store.MoveInsert(*p));
+        if (p == nullptr) {
+            return std::nullopt;
+        }
+        try {
+            return read_only_ ? content_store.CopyInsert(*p)
+                              : content_store.MoveInsert(*p);
+        } catch (const Error& e) {
+            log.Important("When fetching %s: %s", *p, e.what());
+            return std::nullopt;
+        }
     }
 
   private:

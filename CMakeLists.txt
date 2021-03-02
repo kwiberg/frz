@@ -168,6 +168,7 @@ frz_add_library(content_store STATIC src/content_store.cc)
 target_link_libraries(content_store
  PRIVATE
   absl::random_random
+  exceptions
   filesystem_util
   )
 

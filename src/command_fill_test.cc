@@ -184,5 +184,30 @@ TEST(TestCommandFill, CopyFromUnreadable) {
     EXPECT_THAT(d.Path() / "file3", ReadContents(StrEq("789")));
 }
 
+TEST(TestCommandFill, WriteFailure) {
+    TempDir d = CreateSmallTestRepo();
+
+    // Keep "file1", but remove the rest of its symlink chain.
+    for (auto paths = d.FollowSymlinks("file1");
+         const std::filesystem::path& p : paths | std::views::drop(1)) {
+        std::filesystem::remove(p);
+    }
+    d.File("sub/foo", "123");  // Same content as the original file.
+
+    // Write protect `.frz/content/`; this will cause a failure when we try to
+    // copy the new content file in. This is an unlikely problem in practice,
+    // but it causes a failure in the same place as an out-of-disk-space error
+    // would.
+    std::filesystem::permissions(d.Path() / ".frz/content",
+                                 std::filesystem::perms::owner_write |
+                                     std::filesystem::perms::group_write |
+                                     std::filesystem::perms::others_write,
+                                 std::filesystem::perm_options::remove);
+
+    // We expect this to fail because of the write protection, but it should do
+    // so gracefully!
+    EXPECT_EQ(1, Command(d.Path(), {"fill", "--copy-from", "sub"}));
+}
+
 }  // namespace
 }  // namespace frz

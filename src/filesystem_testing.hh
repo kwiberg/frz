@@ -67,6 +67,16 @@ class TempDir final {
 
     ~TempDir() {
         if (!path_.empty()) {
+            // Recursively remove `path_`. Since some tests remove write and
+            // execute permissions, we must restore these first.
+            for (const std::filesystem::directory_entry& dent :
+                 std::filesystem::recursive_directory_iterator(path_)) {
+                if (std::filesystem::is_directory(dent.symlink_status())) {
+                    std::filesystem::permissions(
+                        dent.path(), std::filesystem::perms::owner_all,
+                        std::filesystem::perm_options::add);
+                }
+            }
             std::filesystem::remove_all(path_);
         }
     }
