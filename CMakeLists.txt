@@ -185,8 +185,8 @@ target_link_libraries(content_source
   file_source
   )
 
-frz_add_library(top_directory STATIC src/top_directory.cc)
-target_link_libraries(top_directory
+frz_add_library(frz_repository STATIC src/frz_repository.cc)
+target_link_libraries(frz_repository
  PUBLIC
   stream
   hasher
@@ -363,10 +363,10 @@ target_link_libraries(command
   absl::algorithm_container
   blake3_256_hasher
   exceptions
+  frz_repository
   git
   log
   stream
-  top_directory
   )
 
 frz_add_library(filesystem_testing STATIC src/filesystem_testing.cc)

@@ -14,8 +14,8 @@
   limitations under the License.
 */
 
-#ifndef FRZ_TOP_DIRECTORY_HH_
-#define FRZ_TOP_DIRECTORY_HH_
+#ifndef FRZ_REPOSITORY_HH_
+#define FRZ_REPOSITORY_HH_
 
 #include <filesystem>
 #include <functional>
@@ -31,19 +31,19 @@ namespace frz {
 // Instances of this class represent zero or more Frz repositories, which are
 // automatically discovered by looking in the argument directory, the parent
 // directory, the grandparent directory, etc.
-class Top {
+class Frz {
   public:
     struct ContentSource {
         std::filesystem::path path;
         bool read_only;
     };
 
-    static std::unique_ptr<Top> Create(
+    static std::unique_ptr<Frz> Create(
         Streamer& streamer,
         std::function<std::unique_ptr<Hasher<256>>()> create_hasher,
         std::string hash_name);
 
-    virtual ~Top() = default;
+    virtual ~Frz() = default;
 
     // Add the given file (move it to the content directory, and replace it
     // with a symlink). Return true if the file contents were used, false if
@@ -103,4 +103,4 @@ class Top {
 
 }  // namespace frz
 
-#endif  // FRZ_TOP_DIRECTORY_HH_
+#endif  // FRZ_REPOSITORY_HH_

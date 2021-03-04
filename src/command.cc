@@ -24,10 +24,10 @@
 
 #include "blake3_256_hasher.hh"
 #include "exceptions.hh"
+#include "frz_repository.hh"
 #include "git.hh"
 #include "log.hh"
 #include "stream.hh"
-#include "top_directory.hh"
 
 namespace frz {
 namespace {
@@ -49,7 +49,7 @@ class ContentSourceOptions final {
                       ".frz/content (or copy, if moving isn't possible)")
                    ->type_name("DIR")) {}
 
-    std::vector<Top::ContentSource> GetResult(
+    std::vector<Frz::ContentSource> GetResult(
         const std::filesystem::path& working_dir) const {
         // Merge `copy_from_` and `move_from_` into a single list, interleaving
         // in the order they were given on the command line.
@@ -57,7 +57,7 @@ class ContentSourceOptions final {
         std::vector<std::string> move_from = move_from_;
         absl::c_reverse(copy_from);
         absl::c_reverse(move_from);
-        std::vector<Top::ContentSource> content_sources;
+        std::vector<Frz::ContentSource> content_sources;
         for (const auto* option : app_.parse_order()) {
             if (option == &copy_from_opt_) {
                 content_sources.push_back(
@@ -90,7 +90,7 @@ struct CommonArgs {
     const std::filesystem::path& working_dir;
     Log log;
     Streamer& streamer;
-    const std::unique_ptr<Top> top;
+    const std::unique_ptr<Frz> frz_repo;
 };
 
 struct AddArgs {
@@ -117,11 +117,11 @@ int Add(CommonArgs& common_args, const AddArgs& add_args) {
             ++nonfiles;
             return;
         }
-        const Top::AddResult r = common_args.top->AddFile(dent.path());
-        if (r == Top::AddResult::kNewFile) {
+        const Frz::AddResult r = common_args.frz_repo->AddFile(dent.path());
+        if (r == Frz::AddResult::kNewFile) {
             ++successful;
             absl::PrintF("+ %s\n", pretty_path(dent.path()));
-        } else if (r == Top::AddResult::kDuplicateFile) {
+        } else if (r == Frz::AddResult::kDuplicateFile) {
             ++duplicates;
             absl::PrintF("= %s\n", pretty_path(dent.path()));
         }
@@ -173,13 +173,13 @@ int Add(CommonArgs& common_args, const AddArgs& add_args) {
 }
 
 struct FillArgs {
-    std::vector<Top::ContentSource> content_sources;
+    std::vector<Frz::ContentSource> content_sources;
 };
 int Fill(CommonArgs& common_args, const FillArgs& fill_args) {
     try {
         const auto result =
-            common_args.top->Fill(common_args.log, common_args.working_dir,
-                                  fill_args.content_sources);
+            common_args.frz_repo->Fill(common_args.log, common_args.working_dir,
+                                       fill_args.content_sources);
         common_args.log.Important(
             "Content files\n"
             "  %d missing (restored)\n"
@@ -194,14 +194,14 @@ int Fill(CommonArgs& common_args, const FillArgs& fill_args) {
 
 struct RepairArgs {
     bool fast = false;
-    std::vector<Top::ContentSource> content_sources;
+    std::vector<Frz::ContentSource> content_sources;
 };
 int Repair(CommonArgs& common_args, const RepairArgs& repair_args) {
     try {
-        const auto result =
-            common_args.top->Repair(common_args.log, common_args.working_dir,
-                                    /*verify_all_hashes=*/!repair_args.fast,
-                                    repair_args.content_sources);
+        const auto result = common_args.frz_repo->Repair(
+            common_args.log, common_args.working_dir,
+            /*verify_all_hashes=*/!repair_args.fast,
+            repair_args.content_sources);
         common_args.log.Important(
             "Index symlinks\n"
             "  %d OK\n"
@@ -266,7 +266,7 @@ int Command(const std::filesystem::path& working_dir, int argc,
         .working_dir = working_dir,
         .log = Log(),
         .streamer = *streamer,
-        .top = Top::Create(*streamer, CreateBlake3_256Hasher, "blake3")};
+        .frz_repo = Frz::Create(*streamer, CreateBlake3_256Hasher, "blake3")};
     if (add_command.parsed()) {
         return Add(common_args, add_args);
     } else if (fill_command.parsed()) {

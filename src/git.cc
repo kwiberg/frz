@@ -25,7 +25,7 @@
 namespace frz {
 namespace {
 
-class GitState final : public Git {
+class GitRepositoryCache final : public Git {
   public:
     bool IsIgnored(const std::filesystem::directory_entry& dent) override {
         GitRepository* git_repo = FindGitRepo(dent);
@@ -96,7 +96,7 @@ class GitState final : public Git {
 }  // namespace
 
 std::unique_ptr<Git> Git::Create() {
-    return std::make_unique<GitState>();
+    return std::make_unique<GitRepositoryCache>();
 }
 
 }  // namespace frz

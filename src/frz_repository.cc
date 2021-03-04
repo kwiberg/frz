@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-#include "top_directory.hh"
+#include "frz_repository.hh"
 
 #include <absl/container/flat_hash_set.h>
 #include <absl/container/node_hash_map.h>
@@ -36,21 +36,21 @@
 namespace frz {
 namespace {
 
-bool IsTopDir(const std::filesystem::directory_entry& dent) {
+bool IsFrzRootDirectory(const std::filesystem::directory_entry& dent) {
     return std::filesystem::is_directory(dent.symlink_status()) &&
            std::filesystem::is_directory(
                std::filesystem::symlink_status(dent.path() / ".frz"));
 }
 
-bool IsTopDir(const std::filesystem::path& dir) {
-    return IsTopDir(std::filesystem::directory_entry(dir));
+bool IsFrzRootDirectory(const std::filesystem::path& dir) {
+    return IsFrzRootDirectory(std::filesystem::directory_entry(dir));
 }
 
-class TopDirectory final {
+class FrzRepository final {
   public:
-    TopDirectory(const std::filesystem::path& path, Streamer& streamer,
-                 std::function<std::unique_ptr<Hasher<256>>()> create_hasher,
-                 std::string hash_name)
+    FrzRepository(const std::filesystem::path& path, Streamer& streamer,
+                  std::function<std::unique_ptr<Hasher<256>>()> create_hasher,
+                  std::string hash_name)
         : path_(path),
           hash_index_(CreateDiskHashIndex(path / ".frz" / hash_name)),
           content_store_(ContentStore::Create(path / ".frz" / "content")),
@@ -60,11 +60,11 @@ class TopDirectory final {
           create_hasher_(std::move(create_hasher)),
           hash_name_(std::move(hash_name)) {}
 
-    Top::AddResult AddFile(const std::filesystem::path& file,
+    Frz::AddResult AddFile(const std::filesystem::path& file,
                            int subdir_levels) {
         CreateHashdirSymlink(file.parent_path(), subdir_levels);
         if (std::filesystem::is_symlink(file)) {
-            return Top::AddResult::kSymlink;
+            return Frz::AddResult::kSymlink;
         }
         FRZ_ASSERT(std::filesystem::is_regular_file(
             std::filesystem::symlink_status(file)));
@@ -82,19 +82,19 @@ class TopDirectory final {
         if (!inserted) {
             unused_content_store_->MoveInsert(content_path);
         }
-        return inserted ? Top::AddResult::kNewFile
-                        : Top::AddResult::kDuplicateFile;
+        return inserted ? Frz::AddResult::kNewFile
+                        : Frz::AddResult::kDuplicateFile;
     }
 
-    Top::FillResult Fill(Log& log,
-                         std::vector<Top::ContentSource> content_sources) {
+    Frz::FillResult Fill(Log& log,
+                         std::vector<Frz::ContentSource> content_sources) {
         auto r = FetchMissingContent(log, std::move(content_sources));
         return {.num_fetched = r.num_fetched,
                 .num_still_missing = r.num_still_missing};
     }
 
-    Top::RepairResult Repair(Log& log, bool verify_all_hashes,
-                             std::vector<Top::ContentSource> content_sources) {
+    Frz::RepairResult Repair(Log& log, bool verify_all_hashes,
+                             std::vector<Frz::ContentSource> content_sources) {
         auto r1 = CheckIndexSymlinks(log, verify_all_hashes);
         auto r2 = CheckContentFiles(log, r1.indexed_content_files);
         auto r3 = FetchMissingContent(log, std::move(content_sources));
@@ -113,7 +113,7 @@ class TopDirectory final {
             std::filesystem::symlink_status(dir)));
         std::filesystem::path link = dir / ".frz";
         if (subdir_levels == 0) {
-            // At the top level. We need no symlink here.
+            // At the root level. We need no symlink here.
             FRZ_ASSERT(std::filesystem::is_directory(
                 std::filesystem::symlink_status(link)));
             return;
@@ -329,7 +329,7 @@ class TopDirectory final {
         std::int64_t num_still_missing = 0;
     };
     FetchMissingContentResult FetchMissingContent(
-        Log& log, std::vector<Top::ContentSource> content_sources) {
+        Log& log, std::vector<Frz::ContentSource> content_sources) {
         FetchMissingContentResult result;
         auto progress =
             log.Progress("Checking that referenced content is present");
@@ -358,7 +358,7 @@ class TopDirectory final {
         ProgressLogCounter& symlink_counter,
         std::span<const std::unique_ptr<ContentSource<256>>> sources,
         const std::filesystem::directory_entry& dir, const int subdir_levels) {
-        if (IsTopDir(dir) && subdir_levels > 0) {
+        if (IsFrzRootDirectory(dir) && subdir_levels > 0) {
             // Ignore other repos.
             return;
         }
@@ -424,9 +424,9 @@ class TopDirectory final {
     const std::string hash_name_;
 };
 
-class TopDirectoryCache final : public Top {
+class FrzRepositoryCache final : public Frz {
   public:
-    TopDirectoryCache(
+    FrzRepositoryCache(
         Streamer& streamer,
         std::function<std::unique_ptr<Hasher<256>>()> create_hasher,
         std::string hash_name)
@@ -435,33 +435,34 @@ class TopDirectoryCache final : public Top {
           hash_name_(std::move(hash_name)) {}
 
     AddResult AddFile(const std::filesystem::path& file) override {
-        const TopDirRef& t = GetTopDir(file);
-        return t.topdir->AddFile(file, t.level);
+        const FrzRepositoryRef& f = GetFrzRootDirectory(file);
+        return f.repo->AddFile(file, f.level);
     }
 
     FillResult Fill(Log& log, const std::filesystem::path& path,
                     std::vector<ContentSource> content_sources) override {
-        const TopDirRef& t = GetTopDir(path);
-        return t.topdir->Fill(log, std::move(content_sources));
+        const FrzRepositoryRef& f = GetFrzRootDirectory(path);
+        return f.repo->Fill(log, std::move(content_sources));
     }
 
     RepairResult Repair(Log& log, const std::filesystem::path& path,
                         bool verify_all_hashes,
                         std::vector<ContentSource> content_sources) override {
-        const TopDirRef& t = GetTopDir(path);
-        return t.topdir->Repair(log, verify_all_hashes,
-                                std::move(content_sources));
+        const FrzRepositoryRef& f = GetFrzRootDirectory(path);
+        return f.repo->Repair(log, verify_all_hashes,
+                              std::move(content_sources));
     }
 
   private:
-    struct TopDirRef {
-        std::shared_ptr<TopDirectory> topdir;
-        int level;  // how many levels down are we from the top dir?
+    struct FrzRepositoryRef {
+        std::shared_ptr<FrzRepository> repo;
+        int level;  // how many levels down are we from the root dir?
     };
 
-    const TopDirRef& GetTopDir(const std::filesystem::path& path) try {
+    const FrzRepositoryRef& GetFrzRootDirectory(
+        const std::filesystem::path& path) try {
         std::filesystem::path p = NonLeafCanonical(path);
-        return GetTopDir(
+        return GetFrzRootDirectory(
             /*canonical_dir=*/std::filesystem::is_directory(p)
                 ? p
                 : p.parent_path(),
@@ -470,21 +471,22 @@ class TopDirectoryCache final : public Top {
         throw Error("Found no .frz directory for %s: %s", path, e.what());
     }
 
-    const TopDirRef& GetTopDir(const std::filesystem::path& canonical_dir,
-                               const std::filesystem::path& original_path) {
+    const FrzRepositoryRef& GetFrzRootDirectory(
+        const std::filesystem::path& canonical_dir,
+        const std::filesystem::path& original_path) {
         FRZ_ASSERT(std::filesystem::is_directory(
             std::filesystem::symlink_status(canonical_dir)));
 
-        // Get a reference to the shared_ptr that holds the TopDirectory for
+        // Get a reference to the shared_ptr that holds the FrzRepository for
         // `canonical_dir`.
-        TopDirRef& t = top_dirs_[canonical_dir.native()];
-        if (t.topdir == nullptr) {
-            // The TopDirectory pointer is null (because we just default
+        FrzRepositoryRef& f = repos_[canonical_dir.native()];
+        if (f.repo == nullptr) {
+            // The FrzRepository pointer is null (because we just default
             // inserted it). We need to fill it in.
-            if (IsTopDir(canonical_dir)) {
-                t.topdir = std::make_shared<TopDirectory>(
+            if (IsFrzRootDirectory(canonical_dir)) {
+                f.repo = std::make_shared<FrzRepository>(
                     canonical_dir, streamer_, create_hasher_, hash_name_);
-                t.level = 0;  // we found the top dir at this level
+                f.level = 0;  // we found the root dir at this level
             } else {
                 auto parent_dir = canonical_dir.parent_path();
                 if (std::filesystem::equivalent(parent_dir, canonical_dir)) {
@@ -492,20 +494,20 @@ class TopDirectoryCache final : public Top {
                     throw Error("Found no .frz directory for %s",
                                 original_path);
                 }
-                t = GetTopDir(parent_dir, original_path);
-                ++t.level;  // the top dir is one level further up from here,
+                f = GetFrzRootDirectory(parent_dir, original_path);
+                ++f.level;  // the root dir is one level further up from here,
                             // compared to from our parent directory
             }
         }
-        return t;
+        return f;
     }
 
-    // Map from directory name to the TopDirectory object that owns it. This is
+    // Map from directory name to the FrzRepository object that owns it. This is
     // a node_hash_map rather than a flat_hash_map because we need pointer
     // stability, since we look up entries and keep references to them that
     // need to stay valid even though we insert more elements in the meantime.
-    absl::node_hash_map<std::filesystem::path::string_type, TopDirRef>
-        top_dirs_;
+    absl::node_hash_map<std::filesystem::path::string_type, FrzRepositoryRef>
+        repos_;
 
     Streamer& streamer_;
     const std::function<std::unique_ptr<Hasher<256>>()> create_hasher_;
@@ -514,11 +516,11 @@ class TopDirectoryCache final : public Top {
 
 }  // namespace
 
-std::unique_ptr<Top> Top::Create(
+std::unique_ptr<Frz> Frz::Create(
     Streamer& streamer,
     std::function<std::unique_ptr<Hasher<256>>()> create_hasher,
     std::string hash_name) {
-    return std::make_unique<TopDirectoryCache>(
+    return std::make_unique<FrzRepositoryCache>(
         streamer, std::move(create_hasher), std::move(hash_name));
 }
 
