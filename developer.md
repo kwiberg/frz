@@ -12,6 +12,9 @@ changes:
 
     `return;  // like this`
 
+  * Function comments are written in the imperative (`// Return the
+    sum of the arguments.`), not third person present tense (`//
+    Returns the sum of the arguments.`).
   * Indented statements always use braces:
   
     ```
