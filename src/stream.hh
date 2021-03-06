@@ -38,7 +38,7 @@
 namespace frz {
 
 // Interface for stream sources, i.e. objects that produce a stream of bytes. A
-// source will producve a finite number of bytes, and then end.
+// source will produce a finite number of bytes, and then end.
 class StreamSource {
   public:
     struct BytesCopied {

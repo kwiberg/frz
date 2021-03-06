@@ -1,11 +1,10 @@
 # Frz, a simple utility for managing large files with Git
 
-`frz` is a simple command-line utility that makes it possible to
-manage large amounts of data with [Git](https://git-scm.com/) in a
-completely peer-to-peer way. It can scan a repository to make sure
-that all files are present and undamaged, and if some files are
-missing or broken, it can look for good copies in arbitrary directory
-trees.
+Frz is a simple command-line utility that makes it possible to manage
+large amounts of data with [Git](https://git-scm.com/) in a completely
+peer-to-peer way. It can scan a repository to make sure that all files
+are present and undamaged, and if some files are missing or broken, it
+can look for good copies in arbitrary directory trees.
 
 ## Overview
 
