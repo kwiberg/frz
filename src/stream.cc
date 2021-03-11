@@ -18,6 +18,7 @@
 
 #include <absl/base/thread_annotations.h>
 #include <absl/synchronization/mutex.h>
+#include <deque>
 
 #include "assert.hh"
 #include "worker.hh"
@@ -57,21 +58,19 @@ class SingleThreadedStreamer final : public Streamer {
 // Move-only object that owns a heap-allocated array of bytes (size fixed at
 // construction time), and keeps track of (1) the number of valid bytes and (2)
 // whether this buffer contains the last byte of the stream.
-class StreamBuffer {
+//
+// After being moved from or default constructed, the object must be assigned a
+// new value before it can be read or written.
+class StreamBuffer final {
   public:
-    // Create a vector of StreamBuffers with the given capacity per buffer.
-    static std::vector<StreamBuffer> CreateVector(int num_buffers,
-                                                  int bytes_per_buffer) {
-        std::vector<StreamBuffer> v;
-        v.reserve(num_buffers);
-        for (int i = 0; i < num_buffers; ++i) {
-            v.emplace_back(bytes_per_buffer);
-        }
-        return v;
-    }
+    // Default constructor. Creates the buffer in an invalid state, just as if
+    // it had been moved from.
+    StreamBuffer() : data_(nullptr), capacity_(0) { FRZ_ASSERT(!Valid()); }
 
     explicit StreamBuffer(int size)
-        : data_(std::make_unique<std::byte[]>(size)), capacity_(size) {}
+        : data_(std::make_unique<std::byte[]>(size)), capacity_(size) {
+        FRZ_ASSERT(Valid());
+    }
 
     StreamBuffer(StreamBuffer&&) = default;
     StreamBuffer& operator=(StreamBuffer&&) = default;
@@ -80,15 +79,22 @@ class StreamBuffer {
 
     // Return the span of valid bytes.
     std::span<const std::byte> Read() const {
+        FRZ_ASSERT(Valid());
         return std::span(data_.get(), status_.size);
     }
 
     // Is the last byte in this buffer also the last byte of the whole stream?
-    bool End() const { return status_.end; }
+    bool End() const {
+        FRZ_ASSERT(Valid());
+        return status_.end;
+    }
 
     // Return a writable span for the whole buffer. Callers must call
     // .FinishWrite() when they're done writing to it.
-    std::span<std::byte> Write() { return std::span(data_.get(), capacity_); }
+    std::span<std::byte> Write() {
+        FRZ_ASSERT(Valid());
+        return std::span(data_.get(), capacity_);
+    }
 
     // Inform the buffer of how many bytes were written to it, and whether the
     // last byte written is the last byte of the whole stream.
@@ -97,38 +103,124 @@ class StreamBuffer {
         bool end;
     };
     void FinishWrite(WriteStatus status) {
+        FRZ_ASSERT(Valid());
         FRZ_ASSERT_LE(status.size, capacity_);
         status_ = status;
+        FRZ_ASSERT(Valid());
     }
 
   private:
+    bool Valid() const { return data_ && status_.size <= capacity_; }
+
     std::unique_ptr<std::byte[]> data_;
     int capacity_;
     WriteStatus status_ = {.size = 0, .end = false};
 };
 
-// TODO(github.com/kwiberg/frz/issues/4): Replace with `using Semaphore =
-// std::counting_semaphore<100>` once we have standard library support for it.
-class Semaphore final {
+// A queue of StreamBuffers. Its methods may be called concurrently with each
+// other, but no method may be called concurrently with itself.
+class StreamBufferQueue final {
   public:
-    static constexpr std::ptrdiff_t max() noexcept { return 100; }
+    // Create a new circular stream buffer that may grow to at most
+    // `max_buffers` buffers, each of size `bytes_per_buffer`.
+    StreamBufferQueue(int max_buffers, int bytes_per_buffer)
+        : bytes_per_buffer_(bytes_per_buffer),
+          buffer_allocation_budget_(max_buffers) {}
 
-    explicit Semaphore(int initial_count) : count_(initial_count) {}
-
-    void acquire() {
-        auto not_blocked = [&] { return count_ >= 1; };
-        absl::MutexLock ml(&mutex_, absl::Condition(&not_blocked));
-        --count_;
+    // Clear the queue without freeing any memory.
+    void Clear() {
+        absl::MutexLock ml_unused(&unused_mutex_);
+        absl::MutexLock ml_filled(&filled_mutex_);
+        for (StreamBuffer& buf : filled_) {
+            unused_.push_back(std::move(buf));
+        }
+        filled_.clear();
     }
 
-    void release() {
-        absl::MutexLock ml(&mutex_);
-        ++count_;
+    // Get an unused buffer and write to it. Will block if there are no free
+    // buffers, and we've reached the limit for how many we may allocate.
+    void Enqueue(std::function<void(StreamBuffer& buf)> write_fun) {
+        StreamBuffer buf;
+
+        if (buffer_allocation_budget_ >= 1) {
+            // Grab the "unused" mutex without blocking, and pop the topmost
+            // unused buffer off the stack. If the "unused" stack is empty,
+            // release the mutex and then allocate a new buffer.
+            bool allocate_new = false;
+            {
+                absl::MutexLock ml(&unused_mutex_);
+                if (unused_.empty()) {
+                    --buffer_allocation_budget_;
+                    allocate_new = true;
+                } else {
+                    buf = std::move(unused_.back());
+                    unused_.pop_back();
+                }
+            }
+            if (allocate_new) {
+                buf = StreamBuffer(bytes_per_buffer_);
+            }
+        } else {
+            // Grab the "unused" mutex, blocking until the "unused" stack isn't
+            // empty, and then pop the topmost unused buffer off the stack.
+            auto not_blocked = [&] { return !unused_.empty(); };
+            absl::MutexLock ml(&unused_mutex_, absl::Condition(&not_blocked));
+            buf = std::move(unused_.back());
+            unused_.pop_back();
+        }
+
+        // Let the caller fill the buffer.
+        write_fun(buf);
+
+        // Add the newly filled buffer to the back of the "filled" queue.
+        {
+            absl::MutexLock ml(&filled_mutex_);
+            filled_.push_back(std::move(buf));
+        }
+    }
+
+    // Get the oldest full buffer and read from it. Will block until there is a
+    // full buffer available.
+    void Dequeue(std::function<void(const StreamBuffer& buf)> read_fun) {
+        StreamBuffer buf;
+
+        // Grab the "filled" mutex, blocking until the "filled" queue isn't
+        // empty, and then pop the frontost buffer off the queue.
+        {
+            auto not_blocked = [&] { return !filled_.empty(); };
+            absl::MutexLock ml(&filled_mutex_, absl::Condition(&not_blocked));
+            FRZ_ASSERT(!filled_.empty());
+            buf = std::move(filled_.back());
+            filled_.pop_back();
+        }
+
+        // Let the caller read from the buffer.
+        read_fun(buf);
+
+        // Push the newly unused buffer onto the "unused" stack.
+        {
+            absl::MutexLock ml(&unused_mutex_);
+            unused_.push_back(std::move(buf));
+        }
     }
 
   private:
-    absl::Mutex mutex_;
-    int count_ ABSL_GUARDED_BY(mutex_);
+    const int bytes_per_buffer_;
+
+    // How many more buffers may we allocate? Not protected by a mutex, because
+    // it's only touched by `.Enqueue()`.
+    int buffer_allocation_budget_;
+
+    // Unused buffers. A stack, because while we don't care about the data in
+    // these buffers, we prefer to reuse memory that is cache hot.
+    absl::Mutex unused_mutex_;
+    std::vector<StreamBuffer> unused_ ABSL_GUARDED_BY(unused_mutex_);
+
+    // Filled buffers. A queue, because we must stream data in FIFO order.
+    // TODO: For better performance, reimplement as a fixed-size circular
+    // buffer protected by two `std::counting_semaphore`.
+    absl::Mutex filled_mutex_;
+    std::deque<StreamBuffer> filled_ ABSL_GUARDED_BY(filled_mutex_);
 };
 
 // A Streamer that runs the source in a woker thread and the sink in the
@@ -136,61 +228,30 @@ class Semaphore final {
 class MultiThreadedStreamer final : public Streamer {
   public:
     MultiThreadedStreamer(CreateMultiThreadedStreamerArgs args)
-        : buffers_(StreamBuffer::CreateVector(args.num_buffers,
-                                              args.bytes_per_buffer)) {}
+        : queue_(args.num_buffers, args.bytes_per_buffer) {}
 
     void Stream(StreamSource& source, StreamSink& sink,
                 std::function<void(int num_bytes)> progress) override {
-        FRZ_ASSERT_LE(buffers_.size(), Semaphore::max());
-
-        // The number of free buffers in `buffers_`, just waiting for
-        // source_work() to write to them.
-        Semaphore free_buffers(FRZ_ASSERT_CAST(int, buffers_.size()));
-
-        // The number of filled buffers in `buffers_`, just waiting for
-        // sink_work() to read from them.
-        Semaphore full_buffers(0);
+        queue_.Clear();  // in case an earlier operation was interrupted
 
         auto source_work = [&] {
-            // Loop over the buffers, starting over from the beginning when we
-            // reach the end.
-            for (int i = 0; true; ++i, i = i < std::ssize(buffers_) ? i : 0) {
-                // Acquire buffers_[i] from the "free" queue, blocking until it
-                // becomes available.
-                free_buffers.acquire();
-
-                // Fill buffers_[i] with bytes and release it to the "full"
-                // queue.
-                auto result = FillBufferFromStream(source, buffers_[i].Write());
-                buffers_[i].FinishWrite(
-                    {.size = result.num_bytes, .end = result.end});
-                full_buffers.release();
-
-                if (result.end) {
-                    return;  // The stream ended.
-                }
+            for (bool end = false; !end;) {
+                queue_.Enqueue([&](StreamBuffer& buf) {
+                    auto result = FillBufferFromStream(source, buf.Write());
+                    buf.FinishWrite(
+                        {.size = result.num_bytes, .end = result.end});
+                    end = result.end;
+                });
             }
         };
 
         auto sink_work = [&] {
-            // Loop over the buffers, starting over from the beginning when we
-            // reach the end.
-            for (int i = 0; true; ++i, i = i < std::ssize(buffers_) ? i : 0) {
-                // Acquire buffers_[i] from the "full" queue, blocking until it
-                // becomes available.
-                full_buffers.acquire();
-
-                // Feed the contents of buffers_[i] to the sink.
-                sink.AddBytes(buffers_[i].Read());
-                progress(buffers_[i].Read().size());
-                const bool end = buffers_[i].End();
-
-                // Release buffers_[i] to the "free" queue.
-                free_buffers.release();
-
-                if (end) {
-                    return;  // The stream ended.
-                }
+            for (bool end = false; !end;) {
+                queue_.Dequeue([&](const StreamBuffer& buf) {
+                    sink.AddBytes(buf.Read());
+                    progress(buf.Read().size());
+                    end = buf.End();
+                });
             }
         };
 
@@ -199,7 +260,7 @@ class MultiThreadedStreamer final : public Streamer {
     }
 
   private:
-    std::vector<StreamBuffer> buffers_;
+    StreamBufferQueue queue_;
     Worker worker_;
 };
 
