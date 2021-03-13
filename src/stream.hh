@@ -53,6 +53,10 @@ class StreamSource {
     // buffer.size()].
     virtual std::variant<BytesCopied, End> GetBytes(
         std::span<std::byte> buffer) = 0;
+
+    // Get and set the current stream position.
+    virtual std::int64_t GetPosition() const = 0;
+    virtual void SetPosition(std::int64_t pos) = 0;
 };
 
 // Read from bytes from `source` and write them to `buffer`. In the return

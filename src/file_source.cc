@@ -28,9 +28,11 @@ namespace {
 
 class FileStreamSource final : public StreamSource {
   public:
-    FileStreamSource(std::FILE* file) : file_(file) {
-        FRZ_ASSERT_NE(file_, nullptr);
-        FRZ_CHECK(!std::ferror(file_));
+    explicit FileStreamSource(const std::filesystem::path& path)
+        : file_(std::fopen(path.c_str(), "rb")) {
+        if (file_ == nullptr) {
+            throw ErrnoError();
+        }
     }
 
     ~FileStreamSource() override {
@@ -41,7 +43,7 @@ class FileStreamSource final : public StreamSource {
 
     std::variant<BytesCopied, End> GetBytes(
         std::span<std::byte> buffer) override {
-        if (file_ == nullptr) {
+        if (std::feof(file_)) {
             return End{};
         }
         int bytes_read = 0;
@@ -53,27 +55,31 @@ class FileStreamSource final : public StreamSource {
                 throw ErrnoError();
             }
             if (std::feof(file_)) {
-                std::fclose(file_);
-                file_ = nullptr;
                 break;
             }
         }
         return BytesCopied{.num_bytes = bytes_read};
     }
 
+    std::int64_t GetPosition() const override {
+        return FRZ_ASSERT_CAST(std::int64_t, std::ftell(file_));
+    }
+
+    void SetPosition(std::int64_t pos) override {
+        if (std::fseek(file_, long{pos}, SEEK_SET) != 0) {
+            throw ErrnoError();
+        }
+    }
+
   private:
-    std::FILE* file_;
+    std::FILE* const file_;
 };
 
 }  // namespace
 
-std::unique_ptr<StreamSource> CreateFileSource(std::filesystem::path path) {
-    std::FILE* const file = std::fopen(path.c_str(), "rb");
-    if (file == nullptr) {
-        throw ErrnoError();
-    } else {
-        return std::make_unique<FileStreamSource>(file);
-    }
+std::unique_ptr<StreamSource> CreateFileSource(
+    const std::filesystem::path& path) {
+    return std::make_unique<FileStreamSource>(path);
 }
 
 }  // namespace frz

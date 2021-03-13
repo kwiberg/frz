@@ -45,7 +45,6 @@ class Error final {
 
 // Create an error from the current value of `errno`.
 inline Error ErrnoError() {
-    FRZ_ASSERT_NE(errno, 0);
     return Error(std::strerror(errno));
 }
 

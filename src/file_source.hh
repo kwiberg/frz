@@ -25,7 +25,8 @@
 namespace frz {
 
 // Create a StreamSource that reads bytes from the given file.
-std::unique_ptr<StreamSource> CreateFileSource(std::filesystem::path path);
+std::unique_ptr<StreamSource> CreateFileSource(
+    const std::filesystem::path& path);
 
 }  // namespace frz
 
