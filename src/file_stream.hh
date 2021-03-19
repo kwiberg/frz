@@ -14,8 +14,8 @@
   limitations under the License.
 */
 
-#ifndef FRZ_FILE_SOURCE_HH_
-#define FRZ_FILE_SOURCE_HH_
+#ifndef FRZ_FILE_STREAM_HH_
+#define FRZ_FILE_STREAM_HH_
 
 #include <filesystem>
 #include <memory>
@@ -28,6 +28,10 @@ namespace frz {
 std::unique_ptr<StreamSource> CreateFileSource(
     const std::filesystem::path& path);
 
+// Create a StreamSink that writes bytes to the given file. Throw
+// `FileExistsException` if the file already exists.
+std::unique_ptr<StreamSink> CreateFileSink(const std::filesystem::path& path);
+
 }  // namespace frz
 
-#endif  // FRZ_FILE_SOURCE_HH_
+#endif  // FRZ_FILE_STREAM_HH_

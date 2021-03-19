@@ -24,7 +24,7 @@
 
 #include "blake3_256_hasher.hh"
 #include "exceptions.hh"
-#include "file_source.hh"
+#include "file_stream.hh"
 #include "hash_index.hh"
 #include "hasher.hh"
 #include "openssl_sha256_hasher.hh"

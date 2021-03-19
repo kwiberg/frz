@@ -135,8 +135,8 @@ target_link_libraries(blake3_256_hasher
   PUBLIC hasher
   PRIVATE blake3)
 
-frz_add_library(file_source STATIC src/file_source.cc)
-target_link_libraries(file_source PUBLIC exceptions stream)
+frz_add_library(file_stream STATIC src/file_stream.cc)
+target_link_libraries(file_stream PUBLIC exceptions stream)
 
 frz_add_library(hash_index STATIC src/hash_index.cc)
 target_link_libraries(hash_index
@@ -182,7 +182,7 @@ target_link_libraries(content_source
  PRIVATE
   absl::flat_hash_map
   exceptions
-  file_source
+  file_stream
   )
 
 frz_add_library(frz_repository STATIC src/frz_repository.cc)
@@ -196,7 +196,7 @@ target_link_libraries(frz_repository
   content_source
   content_store
   exceptions
-  file_source
+  file_stream
   hash_index
   log
   )
@@ -339,7 +339,7 @@ target_link_libraries(frz-hash-files
   absl::str_format
   absl::time
   blake3_256_hasher
-  file_source
+  file_stream
   hash_index
   openssl_sha256_hasher
   openssl_sha512_256_hasher
@@ -351,7 +351,7 @@ target_link_libraries(frz-create-index
   CLI11
   absl::str_format
   blake3_256_hasher
-  file_source
+  file_stream
   hash_index
   stream
   )

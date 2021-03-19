@@ -48,6 +48,14 @@ inline Error ErrnoError() {
     return Error(std::strerror(errno));
 }
 
+// Base class for application specific exceptions that are intended to be
+// caught and handled close to the point where they occurred.
+class Exception {};
+
+// The operation failed because the file already exists. Corresponds to the
+// `errno` value EEXIST.
+class FileExistsException final : public Exception {};
+
 }  // namespace frz
 
 #endif  // FRZ_EXCEPTIONS_HH_

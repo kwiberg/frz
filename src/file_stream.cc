@@ -14,7 +14,7 @@
   limitations under the License.
 */
 
-#include "file_source.hh"
+#include "file_stream.hh"
 
 #include <cstdio>
 
@@ -75,11 +75,46 @@ class FileStreamSource final : public StreamSource {
     std::FILE* const file_;
 };
 
+class FileStreamSink final : public StreamSink {
+  public:
+    FileStreamSink(const std::filesystem::path& path)
+        : file_(std::fopen(path.c_str(), "wxb")) {
+        if (file_ == nullptr) {
+            if (errno == EEXIST) {
+                throw FileExistsException();
+            } else {
+                throw ErrnoError();
+            }
+        }
+    }
+
+    ~FileStreamSink() override {
+        if (file_ != nullptr) {
+            std::fclose(file_);
+        }
+    }
+
+    void AddBytes(std::span<const std::byte> buffer) {
+        const std::size_t written =
+            std::fwrite(buffer.data(), 1, buffer.size(), file_);
+        if (written != buffer.size() || std::ferror(file_)) {
+            throw ErrnoError();
+        }
+    }
+
+  private:
+    std::FILE* const file_;
+};
+
 }  // namespace
 
 std::unique_ptr<StreamSource> CreateFileSource(
     const std::filesystem::path& path) {
     return std::make_unique<FileStreamSource>(path);
+}
+
+std::unique_ptr<StreamSink> CreateFileSink(const std::filesystem::path& path) {
+    return std::make_unique<FileStreamSink>(path);
 }
 
 }  // namespace frz

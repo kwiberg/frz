@@ -26,7 +26,7 @@
 #include "content_source.hh"
 #include "content_store.hh"
 #include "exceptions.hh"
-#include "file_source.hh"
+#include "file_stream.hh"
 #include "filesystem_util.hh"
 #include "hash_index.hh"
 #include "hasher.hh"

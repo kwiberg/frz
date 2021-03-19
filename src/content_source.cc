@@ -24,7 +24,7 @@
 
 #include "content_store.hh"
 #include "exceptions.hh"
-#include "file_source.hh"
+#include "file_stream.hh"
 #include "hash.hh"
 #include "hasher.hh"
 #include "log.hh"
