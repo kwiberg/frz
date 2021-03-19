@@ -260,8 +260,10 @@ int Command(const std::filesystem::path& working_dir, int argc,
 
     CLI11_PARSE(app, argc, argv);
 
-    const std::unique_ptr<Streamer> streamer = CreateMultiThreadedStreamer(
-        {.num_buffers = 4, .bytes_per_buffer = 1024 * 1024});
+    const std::unique_ptr<Streamer> streamer =
+        CreateMultiThreadedStreamer({.bytes_per_buffer = 1024 * 1024,
+                                     .num_buffers = 4,
+                                     .num_buffers_secondary = 1024});
     CommonArgs common_args = {
         .working_dir = working_dir,
         .log = Log(),

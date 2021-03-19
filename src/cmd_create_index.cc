@@ -42,8 +42,10 @@ int main(int argc, char** argv) {
 
     const std::unique_ptr<HashIndex<256>> index =
         CreateDiskHashIndex(index_dir);
-    const std::unique_ptr<Streamer> streamer = CreateMultiThreadedStreamer(
-        {.num_buffers = 4, .bytes_per_buffer = 1024 * 1024});
+    const std::unique_ptr<Streamer> streamer =
+        CreateMultiThreadedStreamer({.bytes_per_buffer = 1024 * 1024,
+                                     .num_buffers = 4,
+                                     .num_buffers_secondary = 1024});
     std::int64_t successful = 0;
     std::int64_t duplicates = 0;
     std::int64_t nonfiles = 0;

@@ -68,8 +68,9 @@ int main(int argc, char** argv) {
     std::int64_t total_bytes = 0;
     const std::unique_ptr<Streamer> streamer =
         multithreading
-            ? CreateMultiThreadedStreamer(
-                  {.num_buffers = 4, .bytes_per_buffer = 1024 * 1024})
+            ? CreateMultiThreadedStreamer({.bytes_per_buffer = 1024 * 1024,
+                                           .num_buffers = 4,
+                                           .num_buffers_secondary = 1024})
             : CreateSingleThreadedStreamer({.buffer_size = 1024 * 1024});
     absl::Time start = absl::Now();
     for (const auto& f : files) {

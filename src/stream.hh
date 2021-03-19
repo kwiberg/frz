@@ -89,25 +89,52 @@ class Streamer {
         Stream(source, sink, [](int /*num_bytes*/) {});
     }
 
-    // Stream bytes from source to sink until the former is exhausted. Call the
-    // progress callback each time a chunk is passed from source to sink.
+    // Stream bytes from `source` to `sink` until the former is exhausted. Call
+    // the progress callback each time a chunk is passed from source to sink.
     virtual void Stream(StreamSource& source, StreamSink& sink,
                         std::function<void(int num_bytes)> progress) = 0;
+
+    // Stream bytes from `source` to `primary_sink` until the former is
+    // exhausted. Also stream the bytes to `secondary_sink`, but if it can't
+    // keep up with the stream from `source` to `primary_sink`, stop feeding
+    // it. When `primary_sink` has received all the bytes, call `primary_done`;
+    // its return value decides whether we should stop there, or rewind
+    // `source` and feed `secondary_sink` any bytes it's still missing. Call
+    // the respective progress callback each time a chunk is passed to one of
+    // the sinks.
+    enum class SecondaryStreamDecision { kAbandon, kFinish };
+    struct ForkedStreamArgs {
+        StreamSource& source;
+        StreamSink& primary_sink;
+        StreamSink& secondary_sink;
+        std::function<SecondaryStreamDecision()> primary_done;
+        std::function<void(int num_bytes)> primary_progress;
+        std::function<void(int num_bytes)> secondary_progress;
+    };
+    virtual void ForkedStream(ForkedStreamArgs args) = 0;
 };
 
-// Create a streamer that will alternate calls to the given source and sink,
-// with a buffer of the specified size.
+// Create a streamer that will alternate calls to the given sources and sinks.
 struct CreateSingleThreadedStreamerArgs {
     int buffer_size;
 };
 std::unique_ptr<Streamer> CreateSingleThreadedStreamer(
     CreateSingleThreadedStreamerArgs args);
 
-// Create a streamer that will run the source and the sink in parallel, one on
-// the current thread and the other on a worker thread.
+// Create a streamer that will run sources and sinks in parallel. The
+// parallelism is hidden, so that the caller doesn't need to worry about it
+// (except if the sources and sinks share unsynchronized state---don't do
+// that!).
 struct CreateMultiThreadedStreamerArgs {
-    int num_buffers;
     int bytes_per_buffer;
+
+    // Number of buffer chunks of size `bytes_per_buffer` for straight streams,
+    // and for the primary sink in a forked stream.
+    int num_buffers;
+
+    // Number of buffer chunks of size `bytes_per_buffer` for the secondary
+    // sink in a forked stream.
+    int num_buffers_secondary;
 };
 std::unique_ptr<Streamer> CreateMultiThreadedStreamer(
     CreateMultiThreadedStreamerArgs args);

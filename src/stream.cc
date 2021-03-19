@@ -18,6 +18,7 @@
 
 #include <absl/base/thread_annotations.h>
 #include <absl/synchronization/mutex.h>
+#include <algorithm>
 #include <deque>
 
 #include "assert.hh"
@@ -43,6 +44,24 @@ class SingleThreadedStreamer final : public Streamer {
                 sink.AddBytes(buffer.subspan(0, bc->num_bytes));
                 progress(bc->num_bytes);
             } else if (std::get_if<StreamSource::End>(&result)) {
+                break;
+            } else {
+                FRZ_CHECK(false);
+            }
+        }
+    }
+
+    void ForkedStream(ForkedStreamArgs args) override {
+        const std::span<std::byte> buffer(buffer_.get(), buffer_size_);
+        while (true) {
+            const auto result = args.source.GetBytes(buffer);
+            if (auto* bc = std::get_if<StreamSource::BytesCopied>(&result)) {
+                args.primary_sink.AddBytes(buffer.subspan(0, bc->num_bytes));
+                args.primary_progress(bc->num_bytes);
+                args.secondary_sink.AddBytes(buffer.subspan(0, bc->num_bytes));
+                args.secondary_progress(bc->num_bytes);
+            } else if (std::get_if<StreamSource::End>(&result)) {
+                static_cast<void>(args.primary_done());
                 break;
             } else {
                 FRZ_CHECK(false);
@@ -140,43 +159,15 @@ class StreamBufferQueue final {
     // Get an unused buffer and write to it. Will block if there are no free
     // buffers, and we've reached the limit for how many we may allocate.
     void Enqueue(std::function<void(StreamBuffer& buf)> write_fun) {
-        StreamBuffer buf;
+        bool success = Enqueue(write_fun, /*may_block=*/true);
+        FRZ_ASSERT(success);  // only nonblocking Enqueue() can fail
+    }
 
-        if (buffer_allocation_budget_ >= 1) {
-            // Grab the "unused" mutex without blocking, and pop the topmost
-            // unused buffer off the stack. If the "unused" stack is empty,
-            // release the mutex and then allocate a new buffer.
-            bool allocate_new = false;
-            {
-                absl::MutexLock ml(&unused_mutex_);
-                if (unused_.empty()) {
-                    --buffer_allocation_budget_;
-                    allocate_new = true;
-                } else {
-                    buf = std::move(unused_.back());
-                    unused_.pop_back();
-                }
-            }
-            if (allocate_new) {
-                buf = StreamBuffer(bytes_per_buffer_);
-            }
-        } else {
-            // Grab the "unused" mutex, blocking until the "unused" stack isn't
-            // empty, and then pop the topmost unused buffer off the stack.
-            auto not_blocked = [&] { return !unused_.empty(); };
-            absl::MutexLock ml(&unused_mutex_, absl::Condition(&not_blocked));
-            buf = std::move(unused_.back());
-            unused_.pop_back();
-        }
-
-        // Let the caller fill the buffer.
-        write_fun(buf);
-
-        // Add the newly filled buffer to the back of the "filled" queue.
-        {
-            absl::MutexLock ml(&filled_mutex_);
-            filled_.push_back(std::move(buf));
-        }
+    // Get an unused buffer and write to it. Will return false without running
+    // `write_fun` if there are no free buffers, and we've reached the limit
+    // for how many we may allocate. Return true on success.
+    bool NonblockingEnqueue(std::function<void(StreamBuffer& buf)> write_fun) {
+        return Enqueue(write_fun, /*may_block=*/false);
     }
 
     // Get the oldest full buffer and read from it. Will block until there is a
@@ -205,6 +196,57 @@ class StreamBufferQueue final {
     }
 
   private:
+    // Get an unused buffer and write to it. Will block (if `may_block` is
+    // true) or abort without running `write_fun` (if `may_block` is false)
+    // if there are no free buffers, and we've reached the limit for how many
+    // we may allocate. Return true if all went well, false if we aborted.
+    bool Enqueue(std::function<void(StreamBuffer& buf)>& write_fun,
+                 bool may_block) {
+        StreamBuffer buf;
+
+        if (buffer_allocation_budget_ >= 1) {
+            // Grab the "unused" mutex without blocking, and pop the topmost
+            // unused buffer off the stack. If the "unused" stack is empty,
+            // release the mutex and then allocate a new buffer.
+            bool allocate_new = false;
+            {
+                absl::MutexLock ml(&unused_mutex_);
+                if (unused_.empty()) {
+                    --buffer_allocation_budget_;
+                    allocate_new = true;
+                } else {
+                    buf = std::move(unused_.back());
+                    unused_.pop_back();
+                }
+            }
+            if (allocate_new) {
+                buf = StreamBuffer(bytes_per_buffer_);
+            }
+        } else {
+            // Grab the "unused" mutex, blocking until the "unused" stack isn't
+            // empty, and then pop the topmost unused buffer off the stack.
+            auto not_blocked = [&] { return !may_block || !unused_.empty(); };
+            absl::MutexLock ml(&unused_mutex_, absl::Condition(&not_blocked));
+            if (unused_.empty()) {
+                // No unused buffer was immediately available.
+                return false;
+            }
+            buf = std::move(unused_.back());
+            unused_.pop_back();
+        }
+
+        // Let the caller fill the buffer.
+        write_fun(buf);
+
+        // Add the newly filled buffer to the back of the "filled" queue.
+        {
+            absl::MutexLock ml(&filled_mutex_);
+            filled_.push_back(std::move(buf));
+        }
+
+        return true;
+    }
+
     const int bytes_per_buffer_;
 
     // How many more buffers may we allocate? Not protected by a mutex, because
@@ -223,20 +265,41 @@ class StreamBufferQueue final {
     std::deque<StreamBuffer> filled_ ABSL_GUARDED_BY(filled_mutex_);
 };
 
+// TODO: Replace with `std::latch` once we have standard library support for
+// it.
+class Latch final {
+  public:
+    void CountDown() {
+        absl::MutexLock ml(&mutex_);
+        FRZ_ASSERT(!unlocked_);
+        unlocked_ = true;
+    }
+
+    void Wait() {
+        auto not_blocked = [&] { return unlocked_; };
+        absl::MutexLock ml(&mutex_, absl::Condition(&not_blocked));
+    }
+
+  private:
+    absl::Mutex mutex_;
+    bool unlocked_ ABSL_GUARDED_BY(mutex_) = false;
+};
+
 // A Streamer that runs the source in a woker thread and the sink in the
 // current thread; this allows them to execute in parallel.
 class MultiThreadedStreamer final : public Streamer {
   public:
     MultiThreadedStreamer(CreateMultiThreadedStreamerArgs args)
-        : queue_(args.num_buffers, args.bytes_per_buffer) {}
+        : primary_queue_(args.num_buffers, args.bytes_per_buffer),
+          secondary_queue_(args.num_buffers_secondary, args.bytes_per_buffer) {}
 
     void Stream(StreamSource& source, StreamSink& sink,
                 std::function<void(int num_bytes)> progress) override {
-        queue_.Clear();  // in case an earlier operation was interrupted
+        primary_queue_.Clear();  // in case an earlier operation was interrupted
 
         auto source_work = [&] {
             for (bool end = false; !end;) {
-                queue_.Enqueue([&](StreamBuffer& buf) {
+                primary_queue_.Enqueue([&](StreamBuffer& buf) {
                     auto result = FillBufferFromStream(source, buf.Write());
                     buf.FinishWrite(
                         {.size = result.num_bytes, .end = result.end});
@@ -247,7 +310,7 @@ class MultiThreadedStreamer final : public Streamer {
 
         auto sink_work = [&] {
             for (bool end = false; !end;) {
-                queue_.Dequeue([&](const StreamBuffer& buf) {
+                primary_queue_.Dequeue([&](const StreamBuffer& buf) {
                     sink.AddBytes(buf.Read());
                     progress(buf.Read().size());
                     end = buf.End();
@@ -255,13 +318,143 @@ class MultiThreadedStreamer final : public Streamer {
             }
         };
 
-        worker_.Do(source_work);
+        // We run the source on a worker thread and the sink on this thread.
+        // That way, we can simply return without additional synchronization
+        // once the sink work is done.
+        worker_[0].Do(source_work);
         sink_work();
     }
 
+    void ForkedStream(ForkedStreamArgs args) override {
+        // Clear queues in case an earlier operation was interrupted.
+        primary_queue_.Clear();
+        secondary_queue_.Clear();
+
+        // We call the caller's callbacks from different threads. To guarantee
+        // that calls are sequential, we protect the calls with a mutex.
+        absl::Mutex callback_mutex;
+
+        // If and when we discover that we don't care about finishing the
+        // secondary stream, we set this flag to true.
+        std::atomic<bool> cancel_secondary_sink = false;
+
+        // Latches that get flipped when the sinks have eaten all their bytes.
+        Latch primary_sink_finished;
+        Latch secondary_sink_finished;
+
+        auto source_work = [&] {
+            std::optional<std::int64_t> secondary_restart_position;
+
+            // Stream data from `source` to `primary_sink`, and also to
+            // `secondary_sink` as long as it can keep up.
+            for (bool end = false; !end;) {
+                const std::int64_t pos = args.source.GetPosition();
+                primary_queue_.Enqueue([&](StreamBuffer& buf1) {
+                    auto result =
+                        FillBufferFromStream(args.source, buf1.Write());
+                    buf1.FinishWrite(
+                        {.size = result.num_bytes, .end = result.end});
+                    end = result.end;
+                    if (!secondary_restart_position.has_value()) {
+                        const bool success =
+                            secondary_queue_.NonblockingEnqueue(
+                                [&](StreamBuffer& buf2) {
+                                    FRZ_ASSERT_LE(buf1.Read().size(),
+                                                  buf2.Write().size());
+                                    std::ranges::copy(buf1.Read(),
+                                                      buf2.Write().data());
+                                    buf2.FinishWrite({.size = result.num_bytes,
+                                                      .end = result.end});
+                                    FRZ_ASSERT_EQ(buf1.Read().size(),
+                                                  buf2.Read().size());
+                                });
+                        if (!success) {
+                            // We couldn't stream the data to `secondary_sink`
+                            // without blocking. Remember the position we need
+                            // to restart from in case we want to finish it
+                            // later.
+                            secondary_restart_position = pos;
+                        }
+                    }
+                });
+            }
+
+            // Wait for the primary sink to eat all the bytes we sent it, then
+            // tell the caller that the primary stream is done.
+            primary_sink_finished.Wait();
+            const SecondaryStreamDecision ssd = [&] {
+                absl::MutexLock ml(&callback_mutex);
+                return args.primary_done();
+            }();
+
+            if (ssd == SecondaryStreamDecision::kAbandon) {
+                // The caller doesn't want the secondary stream. Ask it to stop
+                // ASAP and not finish flushing its buffer.
+                cancel_secondary_sink.store(true, std::memory_order_relaxed);
+                if (secondary_restart_position.has_value()) {
+                    // The secondary stream may be blocked reading its buffer.
+                    // Feed it an artificial end marker.
+                    secondary_queue_.Enqueue([&](StreamBuffer& buf) {
+                        buf.FinishWrite({.size = 0, .end = true});
+                    });
+                }
+            } else if (ssd == SecondaryStreamDecision::kFinish &&
+                       secondary_restart_position.has_value()) {
+                // The callers wants the secondary stream, but we haven't
+                // finished feeding its buffer. Do that.
+                args.source.SetPosition(*secondary_restart_position);
+                for (bool end = false; !end;) {
+                    secondary_queue_.Enqueue([&](StreamBuffer& buf) {
+                        auto result =
+                            FillBufferFromStream(args.source, buf.Write());
+                        buf.FinishWrite(
+                            {.size = result.num_bytes, .end = result.end});
+                        end = result.end;
+                    });
+                }
+            }
+
+            // Wait for the secondary sink to finish.
+            secondary_sink_finished.Wait();
+        };
+
+        auto primary_sink_work = [&] {
+            for (bool end = false; !end;) {
+                primary_queue_.Dequeue([&](const StreamBuffer& buf) {
+                    args.primary_sink.AddBytes(buf.Read());
+                    end = buf.End();
+                    absl::MutexLock ml(&callback_mutex);
+                    args.primary_progress(buf.Read().size());
+                });
+            }
+            primary_sink_finished.CountDown();
+        };
+
+        auto secondary_sink_work = [&] {
+            for (bool end = false; !end && !cancel_secondary_sink.load(
+                                               std::memory_order_relaxed);) {
+                secondary_queue_.Dequeue([&](const StreamBuffer& buf) {
+                    args.secondary_sink.AddBytes(buf.Read());
+                    end = buf.End();
+                    absl::MutexLock ml(&callback_mutex);
+                    args.secondary_progress(buf.Read().size());
+                });
+            }
+            secondary_sink_finished.CountDown();
+        };
+
+        // `source_work` waits for both sinks to finish, so running the sinks
+        // on worker threads and the source on the current thread ensures that
+        // all work is finished before we return.
+        worker_[0].Do(primary_sink_work);
+        worker_[1].Do(secondary_sink_work);
+        source_work();
+    }
+
   private:
-    StreamBufferQueue queue_;
-    Worker worker_;
+    StreamBufferQueue primary_queue_;
+    StreamBufferQueue secondary_queue_;
+    Worker worker_[2];
 };
 
 }  // namespace
