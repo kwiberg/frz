@@ -77,10 +77,10 @@ class FrzRepository final {
         std::filesystem::rename(file, file2);
         std::filesystem::create_symlink(SymlinkTarget(base32), file);
         const std::filesystem::path content_path =
-            content_store_->MoveInsert(file2);
+            content_store_->MoveInsert(file2, streamer_);
         const bool inserted = hash_index_->Insert(hs, content_path);
         if (!inserted) {
-            unused_content_store_->MoveInsert(content_path);
+            unused_content_store_->MoveInsert(content_path, streamer_);
         }
         return inserted ? Frz::AddResult::kNewFile
                         : Frz::AddResult::kDuplicateFile;
@@ -306,7 +306,7 @@ class FrzRepository final {
                     hs.ToBase32(), canonical_path);
                 ++result.num_missing_index_symlinks;
             } else {
-                unused_content_store_->MoveInsert(dent);
+                unused_content_store_->MoveInsert(dent, streamer_);
                 log.Info(
                     "Moving duplicate content file %s to unused-content/ (hash "
                     "%s).",

@@ -21,6 +21,8 @@
 #include <functional>
 #include <memory>
 
+#include "stream.hh"
+
 namespace frz {
 
 class ContentStore {
@@ -32,15 +34,23 @@ class ContentStore {
 
     virtual ~ContentStore() = default;
 
+    // Stream a file into the content store. The entire streaming process must
+    // take place inside the `stream_fun` callback; if the callback returns
+    // true, the new file is kept, but if it returns false, it is discarded.
+    // Return the path of the new file, or nullopt if `stream_fun` returned
+    // false.
+    virtual std::optional<std::filesystem::path> StreamInsert(
+        std::function<bool(StreamSink& sink)> stream_fun) = 0;
+
     // Copy the given file into the content store. Return the new path.
-    virtual std::filesystem::path CopyInsert(
-        const std::filesystem::path& source) = 0;
+    std::filesystem::path CopyInsert(const std::filesystem::path& source,
+                                     Streamer& streamer);
 
     // Move the given file into the content store, falling back to copying if
     // source and destination are on different filesystems or if the source is
     // not a regular file. Return the new path.
     virtual std::filesystem::path MoveInsert(
-        const std::filesystem::path& source) = 0;
+        const std::filesystem::path& source, Streamer& streamer) = 0;
 
     // Iterate over all regular files in the content store. The callback is
     // given two handles to each content file: `dent`, a directory entry whose

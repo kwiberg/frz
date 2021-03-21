@@ -166,9 +166,12 @@ target_link_libraries(worker
 
 frz_add_library(content_store STATIC src/content_store.cc)
 target_link_libraries(content_store
+ PUBLIC
+  stream
  PRIVATE
   absl::random_random
   exceptions
+  file_stream
   filesystem_util
   )
 

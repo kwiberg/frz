@@ -52,19 +52,24 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
 
     std::optional<std::filesystem::path> Fetch(
         Log& log, const HashAndSize<HashBits>& hs,
-        ContentStore& content_store) override {
+        ContentStore& content_store) override try {
         ListFiles(log);
-        std::filesystem::path* const p = FindFile(log, hs);
-        if (p == nullptr) {
+        std::optional<FindFileResult> r =
+            FindFile(log, hs, read_only_ ? &content_store : nullptr);
+        if (!r.has_value()) {
+            // Couldn't find the requested content.
             return std::nullopt;
+        } else if (r->already_inserted) {
+            // FindFile() inserted the content for us.
+            return r->path;
+        } else {
+            // FindFile() found the content, and we need to insert it.
+            return read_only_ ? content_store.CopyInsert(r->path, streamer_)
+                              : content_store.MoveInsert(r->path, streamer_);
         }
-        try {
-            return read_only_ ? content_store.CopyInsert(*p)
-                              : content_store.MoveInsert(*p);
-        } catch (const Error& e) {
-            log.Important("When fetching %s: %s", *p, e.what());
-            return std::nullopt;
-        }
+    } catch (const Error& e) {
+        log.Important("When fetching %s: %s", hs.ToBase32(), e.what());
+        return std::nullopt;
     }
 
   private:
@@ -87,16 +92,28 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
     }
 
     // Locate a file with the given hash+size, and return its path---or
-    // nullptr, if it cannot be found. In the process, move files from
-    // files_by_size_ to files_by_hash_ as their hashes become known.
-    std::filesystem::path* FindFile(Log& log, const HashAndSize<HashBits>& hs) {
+    // nullopt, if it cannot be found. In the process, move file paths from
+    // `files_by_size_` to `files_by_hash_` as their hashes become known. In
+    // case it's efficient to do so, stream-insert the file to `content_store`
+    // as part of the search.
+    struct FindFileResult {
+        // The path where the requested file can be found.
+        std::filesystem::path path;
+
+        // Did we insert the file into the content store?
+        bool already_inserted;
+    };
+    std::optional<FindFileResult> FindFile(Log& log,
+                                           const HashAndSize<HashBits>& hs,
+                                           ContentStore* const content_store) {
         auto hash_it = files_by_hash_.find(hs);
         if (hash_it != files_by_hash_.end()) {
-            return &hash_it->second;
+            return FindFileResult{.path = hash_it->second,
+                                  .already_inserted = false};
         }
         auto size_it = files_by_size_.find(hs.GetSize());
         if (size_it == files_by_size_.end()) {
-            return nullptr;
+            return std::nullopt;
         }
         FRZ_ASSERT(!size_it->second.empty());
         auto progress = log.Progress("Hashing files");
@@ -109,17 +126,53 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
             try {
                 auto source = CreateFileSource(p);
                 SizeHasher hasher(create_hasher_());
-                streamer_.Stream(*source, hasher, [&](int num_bytes) {
-                    byte_counter.Increment(num_bytes);
-                });
-                HashAndSize<256> p_hs = hasher.Finish();
+                std::optional<HashAndSize<256>> p_hs;
+                std::optional<std::filesystem::path> inserted_path;
+                if (content_store == nullptr) {
+                    streamer_.Stream(*source, hasher, [&](int num_bytes) {
+                        byte_counter.Increment(num_bytes);
+                    });
+                    p_hs = hasher.Finish();
+                } else {
+                    inserted_path = content_store->StreamInsert(
+                        [&](StreamSink& content_sink) {
+                            // Stream the file contents to both the hasher and
+                            // the content store. We wait for the secondary
+                            // transfer to finish iff the hash was the one we
+                            // were looking for.
+                            auto kFinish =
+                                Streamer::SecondaryStreamDecision::kFinish;
+                            auto kAbandon =
+                                Streamer::SecondaryStreamDecision::kAbandon;
+                            streamer_.ForkedStream(
+                                {.source = *source,
+                                 .primary_sink = hasher,
+                                 .secondary_sink = content_sink,
+                                 .primary_done =
+                                     [&] {
+                                         p_hs = hasher.Finish();
+                                         return p_hs == hs ? kFinish : kAbandon;
+                                     },
+                                 .primary_progress =
+                                     [&](int num_bytes) {
+                                         byte_counter.Increment(num_bytes);
+                                     },
+                                 .secondary_progress =
+                                     [](int /*num_bytes*/) {}});
+                            return p_hs == hs;  // keep the inserted content iff
+                                                // the hash matched
+                        });
+                }
+                FRZ_ASSERT(p_hs.has_value());
                 auto [it, inserted] =
-                    files_by_hash_.insert({p_hs, std::move(p)});
+                    files_by_hash_.insert({*p_hs, std::move(p)});
                 if (p_hs == hs) {
                     if (size_it->second.empty()) {
                         files_by_size_.erase(size_it);
                     }
-                    return &it->second;
+                    return FindFileResult{
+                        .path = inserted_path.value_or(it->second),
+                        .already_inserted = inserted_path.has_value()};
                 }
             } catch (const Error& e) {
                 log.Important("When reading %s: %s", p, e.what());
@@ -128,7 +181,7 @@ class DirectoryContentSource final : public ContentSource<HashBits> {
         }
         FRZ_ASSERT(size_it->second.empty());
         files_by_size_.erase(size_it);
-        return nullptr;
+        return std::nullopt;
     }
 
     // Map from content hash+size to the path of a file with that hash+size.

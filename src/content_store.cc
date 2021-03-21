@@ -25,6 +25,7 @@
 #include "assert.hh"
 #include "base32.hh"
 #include "exceptions.hh"
+#include "file_stream.hh"
 #include "filesystem_util.hh"
 
 namespace frz {
@@ -35,39 +36,40 @@ class DiskContentStore final : public ContentStore {
     DiskContentStore(const std::filesystem::path& content_dir)
         : content_dir_(content_dir) {}
 
-    std::filesystem::path CopyInsert(
-        const std::filesystem::path& source) override try {
-        FRZ_ASSERT(std::filesystem::is_regular_file(source));
+    std::optional<std::filesystem::path> StreamInsert(
+        std::function<bool(StreamSink& sink)> stream_fun) override try {
         int depth = 0;
         while (true) {
-            // Generate a destination filename, and attempt to copy `source` to
-            // it.
             const std::filesystem::path destination =
                 SuggestDestinationFilename(depth);
+            std::unique_ptr<StreamSink> sink;
             try {
-                std::filesystem::copy_file(source, destination);
-            } catch (const std::filesystem::filesystem_error& e) {
-                if (e.code() == std::errc::file_exists) {
-                    // Collision; try another, longer, random path name.
-                    continue;
-                } else {
-                    // Unexpected error; re-throw.
-                    throw;
-                }
+                sink = CreateFileSink(destination);
+            } catch (const FileExistsException&) {
+                // Collision; try another, longer, random path name.
+                continue;
             }
-            RemoveWritePermissions(destination);
-            return destination;
+            const bool keep_file = stream_fun(*sink);
+            sink.reset();  // flush+close file before changing permissions or
+                           // removing
+            if (keep_file) {
+                RemoveWritePermissions(destination);
+                return destination;
+            } else {
+                std::filesystem::remove(destination);
+                return std::nullopt;
+            }
         }
     } catch (const std::filesystem::filesystem_error& e) {
         throw Error(e.what());
     }
 
-    std::filesystem::path MoveInsert(
-        const std::filesystem::path& source) override try {
+    std::filesystem::path MoveInsert(const std::filesystem::path& source,
+                                     Streamer& streamer) override try {
         if (std::filesystem::is_symlink(source)) {
             // We don't want to move either the symlink or its taget, because
             // neither is likely to be what the user expects; copy instead.
-            return CopyInsert(source);
+            return CopyInsert(source, streamer);
         }
         FRZ_ASSERT(std::filesystem::is_regular_file(
             std::filesystem::symlink_status(source)));
@@ -88,7 +90,7 @@ class DiskContentStore final : public ContentStore {
                 } else if (e.code() == std::errc::cross_device_link) {
                     // Source and destination are on different filesystems; we
                     // need to copy instead of move.
-                    return CopyInsert(source);
+                    return CopyInsert(source, streamer);
                 } else {
                     // Unexpected error; re-throw.
                     throw;
@@ -165,6 +167,17 @@ class DiskContentStore final : public ContentStore {
 };
 
 }  // namespace
+
+std::filesystem::path ContentStore::CopyInsert(
+    const std::filesystem::path& source, Streamer& streamer) {
+    std::optional<std::filesystem::path> path =
+        StreamInsert([&](StreamSink& sink) {
+            streamer.Stream(*CreateFileSource(source), sink);
+            return true;  // keep the new file
+        });
+    FRZ_ASSERT(path.has_value());
+    return *path;
+}
 
 std::unique_ptr<ContentStore> ContentStore::Create(
     const std::filesystem::path& content_dir) {
