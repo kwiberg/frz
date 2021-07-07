@@ -27,6 +27,7 @@
 
 #include <filesystem>
 #include <git2.h>
+#include <optional>
 
 #include "assert.hh"
 #include "exceptions.hh"

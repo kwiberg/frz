@@ -20,6 +20,7 @@
 #include <absl/synchronization/mutex.h>
 #include <algorithm>
 #include <deque>
+#include <optional>
 
 #include "assert.hh"
 #include "worker.hh"
